@@ -1,0 +1,736 @@
+/* ============================================================================
+   FORCA GAMA — folha de estilos
+   ============================================================================
+   Conceito visual: o jogador opera um CONSOLE DE CONTENÇÃO BIOMÉTRICA,
+   como se estivesse monitorando a transformação do Bruce Banner em tempo
+   real num laboratório. Daí vêm as escolhas de todo o arquivo: medidor
+   de exposição em vez de barra de progresso genérica, retrato em "scan"
+   em vez de ícone solto, teclado com relevo de tecla física, e log de
+   leituras em fonte monoespaçada em vez de "chips" coloridos soltos.
+   ============================================================================ */
+
+/* ----------------------------------------------------------------------------
+   TOKENS
+   Duas cores de acento com papéis diferentes — verde para progresso da
+   transformação, âmbar/vermelho para risco — em vez de um único neon
+   genérico. Isso é o que faz o console parecer um instrumento de verdade,
+   que precisa comunicar "bom" e "perigo" ao mesmo tempo.
+   ---------------------------------------------------------------------------- */
+:root {
+  --bg-vazio: #0a0f0d;
+  --bg-painel: #121917;
+  --bg-painel-alt: #0d1412;
+  --linha-painel: #22302a;
+  --linha-painel-forte: #35493f;
+
+  --verde-gama: #5fd97a;
+  --verde-gama-forte: #94f2a5;
+  --ambar-risco: #f3a53d;
+  --vermelho-critico: #e8495c;
+
+  --texto-primario: #e9f3ec;
+  --texto-secundario: #83988d;
+  --texto-terciario: #526059;
+
+  --fonte-interface: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --fonte-dados: ui-monospace, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+
+  --raio-sutil: 3px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/*
+  Reforça o comportamento padrão do atributo `hidden`.
+  Sem esta regra, `.painel-partida { display: grid }` e
+  `.overlay-vitoria { display: flex }` têm a MESMA especificidade do
+  seletor `[hidden]` do navegador e, por virem depois na cascata,
+  venceriam o atributo — ou seja, a tela apareceria mesmo marcada como
+  oculta pelo JavaScript (`elemento.hidden = true`). Esta regra garante
+  que `hidden` sempre tem a palavra final, não importa quais outras
+  classes de `display` o elemento também receba.
+*/
+[hidden] {
+  display: none !important;
+}
+
+body {
+  background-color: var(--bg-vazio);
+  /* Três camadas sobrepostas simulam o visor de um monitor de verdade:
+     um brilho fraco vindo de cima (como luz de painel), uma grade fina
+     (referência a osciloscópio) e, por fim, a cor sólida de fundo. */
+  background-image:
+    radial-gradient(ellipse at 50% -10%, rgba(95, 217, 122, 0.08), transparent 60%),
+    linear-gradient(rgba(95, 217, 122, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(95, 217, 122, 0.045) 1px, transparent 1px);
+  background-size: auto, 28px 28px, 28px 28px;
+  color: var(--texto-primario);
+  font-family: var(--fonte-interface);
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  padding: 28px 16px;
+  line-height: 1.5;
+}
+
+/* Foco visível e consistente em qualquer elemento interativo — teclado
+   físico precisa disso tanto quanto o mouse, e esquecer essa regra é um
+   dos jeitos mais comuns de uma interface "bonita" falhar no básico. */
+:focus-visible {
+  outline: 2px solid var(--verde-gama-forte);
+  outline-offset: 2px;
+}
+
+.tela-jogo {
+  width: 100%;
+  max-width: 980px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* ============================================================================
+   CABEÇALHO — placa de identificação do equipamento
+   ============================================================================ */
+.cabecalho {
+  text-align: center;
+}
+
+.etiqueta-equipamento {
+  font-family: var(--fonte-dados);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--texto-secundario);
+  margin-bottom: 6px;
+}
+
+.titulo-jogo {
+  font-size: 2.6rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: var(--texto-primario);
+  /* Efeito sutil de "gravação em metal": uma sombra escura por baixo e
+     um realce claro por cima, em vez de um texto chapado. */
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.6),
+    0 0 24px rgba(95, 217, 122, 0.35);
+}
+
+.subtitulo {
+  color: var(--texto-secundario);
+  margin-top: 6px;
+  font-size: 0.95rem;
+}
+
+/* Faixa de risco: listras diagonais âmbar/preto, a mesma linguagem visual
+   usada depois no medidor de exposição crítico. É o único elemento
+   decorativo "ousado" do cabeçalho — o resto permanece discreto. */
+.faixa-risco {
+  height: 6px;
+  margin-top: 18px;
+  border-radius: var(--raio-sutil);
+  background: repeating-linear-gradient(
+    135deg,
+    var(--ambar-risco) 0 10px,
+    #1a1410 10px 20px
+  );
+  opacity: 0.55;
+}
+
+/* ============================================================================
+   PAINÉIS — configuração e partida
+   Cantos retos (não arredondados), borda fina e cantos reforçados por um
+   pequeno "bracket" nos dois cantos superiores — a assinatura visual de
+   painel de instrumento, em vez do cartão com sombra suave genérico.
+   ============================================================================ */
+.painel-configuracao,
+.painel-partida {
+  position: relative;
+  background-color: var(--bg-painel);
+  border: 1px solid var(--linha-painel);
+  border-radius: var(--raio-sutil);
+  padding: 28px;
+}
+
+.painel-configuracao::before,
+.painel-configuracao::after,
+.painel-partida::before,
+.painel-partida::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  width: 18px;
+  height: 18px;
+  border-top: 2px solid var(--verde-gama);
+  pointer-events: none;
+}
+
+.painel-configuracao::before,
+.painel-partida::before {
+  left: -1px;
+  border-left: 2px solid var(--verde-gama);
+}
+
+.painel-configuracao::after,
+.painel-partida::after {
+  right: -1px;
+  border-right: 2px solid var(--verde-gama);
+}
+
+.painel-partida {
+  display: grid;
+  grid-template-columns: 1fr 1.35fr;
+  gap: 32px;
+}
+
+.titulo-bloco {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--verde-gama);
+  margin-bottom: 14px;
+}
+
+.bloco-selecao + .bloco-selecao {
+  margin-top: 26px;
+}
+
+.opcoes {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ============================================================================
+   BOTÕES — "placas de botão" retangulares com indicador lateral
+   Em vez de preencher o botão inteiro de cor no hover (o padrão mais
+   comum), o botão ganha um retângulo de acento à esquerda, como um
+   interruptor de painel sendo ligado.
+   ============================================================================ */
+.botao-opcao,
+.botao-primario {
+  position: relative;
+  font-family: var(--fonte-interface);
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  background-color: var(--bg-painel-alt);
+  color: var(--texto-primario);
+  border: 1px solid var(--linha-painel-forte);
+  border-left: 3px solid var(--linha-painel-forte);
+  border-radius: var(--raio-sutil);
+  padding: 11px 18px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background-color 0.15s;
+}
+
+.botao-opcao:hover,
+.botao-primario:hover {
+  border-left-color: var(--verde-gama);
+  color: var(--verde-gama-forte);
+}
+
+.botao-opcao.selecionada {
+  border-left-color: var(--verde-gama);
+  background-color: rgba(95, 217, 122, 0.08);
+  color: var(--verde-gama-forte);
+}
+
+.botao-primario {
+  margin-top: 4px;
+  border-left-color: var(--verde-gama);
+  background-color: rgba(95, 217, 122, 0.1);
+  color: var(--verde-gama-forte);
+}
+
+.botao-primario:hover {
+  background-color: rgba(95, 217, 122, 0.18);
+}
+
+/* ============================================================================
+   COLUNA DA TRANSFORMAÇÃO
+   ============================================================================ */
+.coluna-transformacao {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.rotulo-secao {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--texto-secundario);
+  margin-bottom: 14px;
+}
+
+.figura-hulk {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 220px;
+}
+
+.retrato-transformacao {
+  width: 190px;
+  height: 190px;
+  overflow: visible;
+}
+
+/* O retrato usa `currentColor` como "cor da transformação": ao trocar
+   só essa propriedade por estágio, cabeça, tronco e braços mudam juntos
+   sem precisar repetir a mesma cor em cada seletor. */
+.figura-corpo {
+  color: #d9a878; /* tom de pele inicial, estágio 0 */
+  transition: color 0.5s ease;
+}
+
+.cabeca,
+.torso,
+.braco {
+  fill: currentColor;
+  transition: fill 0.5s ease, d 0.4s ease;
+}
+
+.torso {
+  fill: #2c4f72; /* camiseta azul do Bruce, estágio 0 */
+  transition: fill 0.5s ease;
+}
+
+/* Forro do colarinho: um tom mais escuro que a camisa, visível só na
+   fresta em "V" entre as duas abas — é o que dá profundidade à gola
+   aberta em vez de ela parecer um remendo colado no pescoço. */
+.forro-colarinho {
+  fill: #0d1e2e;
+}
+
+.camisa-intacta {
+  fill: #18324a;
+}
+
+.camisa-rasgada {
+  fill: #18324a;
+  display: none;
+}
+
+/* Moldura de "scan" biométrico e brilho de fundo: discretos no início,
+   ganham presença conforme a radiação aumenta (ver regras de estágio). */
+.moldura-scan {
+  fill: none;
+  stroke: var(--linha-painel-forte);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 5;
+}
+
+.brilho-fundo {
+  color: var(--verde-gama);
+  opacity: 0.15;
+  transition: opacity 0.5s ease;
+}
+
+/* Anel de pulso: cresce e esmaece em loop contínuo, representando a
+   emissão de radiação gama. A velocidade do loop (animation-duration)
+   é redefinida por estágio mais abaixo — mais erros, pulso mais rápido. */
+.anel-pulso {
+  fill: none;
+  stroke: var(--verde-gama);
+  stroke-width: 2;
+  opacity: 0;
+  transform-origin: 100px 92px;
+  animation: pulso-gama 2.6s ease-out infinite;
+}
+
+@keyframes pulso-gama {
+  0%   { transform: scale(0.75); opacity: 0.6; }
+  100% { transform: scale(1.15); opacity: 0; }
+}
+
+/*
+  Progressão por estágio (0 a 6 = quantidade de erros cometidos).
+  O JavaScript só troca o número em data-estagio; cada regra abaixo
+  descreve UMA fase da transformação, incluindo o medidor de exposição
+  logo depois. É a mesma ideia de "montar a forca aos pedaços" do
+  enunciado original, só que contando a história Bruce → Hulk.
+*/
+.figura-hulk[data-estagio="0"] .anel-pulso { opacity: 0; }
+
+.figura-hulk[data-estagio="1"] .figura-corpo { color: #c9a271; }
+.figura-hulk[data-estagio="1"] .brilho-fundo { opacity: 0.25; }
+
+.figura-hulk[data-estagio="2"] .figura-corpo { color: #a4b06a; }
+.figura-hulk[data-estagio="2"] .torso        { fill: #284567; }
+.figura-hulk[data-estagio="2"] .brilho-fundo { opacity: 0.35; }
+.figura-hulk[data-estagio="2"] .anel-pulso   { animation-duration: 2.2s; }
+
+.figura-hulk[data-estagio="3"] .figura-corpo { color: #7cb860; transform: scale(1.03); }
+.figura-hulk[data-estagio="3"] .torso        { fill: #203a59; }
+.figura-hulk[data-estagio="3"] .brilho-fundo { opacity: 0.45; }
+.figura-hulk[data-estagio="3"] .anel-pulso   { animation-duration: 1.8s; }
+.figura-hulk[data-estagio="3"] .moldura-scan { stroke: var(--ambar-risco); }
+
+.figura-hulk[data-estagio="4"] .figura-corpo    { color: #52a846; transform: scale(1.07); }
+.figura-hulk[data-estagio="4"] .torso           { fill: #182c45; }
+.figura-hulk[data-estagio="4"] .brilho-fundo    { opacity: 0.55; }
+.figura-hulk[data-estagio="4"] .anel-pulso      { animation-duration: 1.4s; stroke: var(--ambar-risco); }
+.figura-hulk[data-estagio="4"] .moldura-scan    { stroke: var(--ambar-risco); }
+.figura-hulk[data-estagio="4"] .camisa-intacta  { display: none; }
+.figura-hulk[data-estagio="4"] .camisa-rasgada  { display: block; }
+
+.figura-hulk[data-estagio="5"] .figura-corpo    { color: #3f9a2e; transform: scale(1.12); }
+.figura-hulk[data-estagio="5"] .torso           { fill: #13233a; }
+.figura-hulk[data-estagio="5"] .brilho-fundo    { opacity: 0.65; }
+.figura-hulk[data-estagio="5"] .anel-pulso      { animation-duration: 1.05s; stroke: var(--vermelho-critico); }
+.figura-hulk[data-estagio="5"] .moldura-scan    { stroke: var(--vermelho-critico); }
+.figura-hulk[data-estagio="5"] .camisa-intacta  { display: none; }
+.figura-hulk[data-estagio="5"] .camisa-rasgada  { display: block; }
+
+.figura-hulk[data-estagio="6"] .figura-corpo    { color: #2f8a1f; transform: scale(1.18); }
+.figura-hulk[data-estagio="6"] .torso           { fill: #0d1a2c; }
+.figura-hulk[data-estagio="6"] .brilho-fundo    { opacity: 0.8; }
+.figura-hulk[data-estagio="6"] .anel-pulso      { animation-duration: 0.8s; stroke: var(--vermelho-critico); }
+.figura-hulk[data-estagio="6"] .moldura-scan    { stroke: var(--vermelho-critico); stroke-width: 2.5; }
+.figura-hulk[data-estagio="6"] .camisa-intacta  { display: none; }
+.figura-hulk[data-estagio="6"] .camisa-rasgada  { display: block; }
+
+.rotulo-estagio {
+  color: var(--verde-gama);
+  font-size: 0.9rem;
+  font-weight: 600;
+  min-height: 1.2em;
+  margin-top: 6px;
+}
+
+/* ----------------------------------------------------------------------------
+   MEDIDOR DE EXPOSIÇÃO
+   Seis segmentos fixos no HTML. A cor final de cada um já é definida
+   pela posição (1-4 = faixa de alerta âmbar, 5-6 = faixa crítica
+   vermelha) através da variável --cor-segmento; o que muda por estágio
+   é só QUANTOS segmentos, a partir do primeiro, aparecem "acesos". Uma
+   única regra combinada (abaixo) resolve os seis estágios de uma vez,
+   em vez de repetir a mesma lógica sete vezes.
+   ---------------------------------------------------------------------------- */
+.gauge-exposicao {
+  display: flex;
+  gap: 4px;
+  margin-top: 12px;
+  width: 100%;
+}
+
+.segmento-gauge {
+  flex: 1;
+  height: 10px;
+  background-color: var(--linha-painel);
+  border-radius: 2px;
+  opacity: 0.6;
+  transition: background-color 0.3s, opacity 0.3s, box-shadow 0.3s;
+}
+
+.segmento-gauge:nth-child(-n+4) { --cor-segmento: var(--ambar-risco); }
+.segmento-gauge:nth-child(n+5)  { --cor-segmento: var(--vermelho-critico); }
+
+.figura-hulk[data-estagio="1"] .segmento-gauge:nth-child(-n+1),
+.figura-hulk[data-estagio="2"] .segmento-gauge:nth-child(-n+2),
+.figura-hulk[data-estagio="3"] .segmento-gauge:nth-child(-n+3),
+.figura-hulk[data-estagio="4"] .segmento-gauge:nth-child(-n+4),
+.figura-hulk[data-estagio="5"] .segmento-gauge:nth-child(-n+5),
+.figura-hulk[data-estagio="6"] .segmento-gauge:nth-child(-n+6) {
+  background-color: var(--cor-segmento);
+  opacity: 1;
+}
+
+.figura-hulk[data-estagio="6"] .segmento-gauge:nth-child(n+5) {
+  box-shadow: 0 0 8px var(--vermelho-critico);
+}
+
+.contador-erros {
+  color: var(--texto-secundario);
+  font-family: var(--fonte-dados);
+  font-size: 0.85rem;
+  margin-top: 10px;
+}
+
+#contador-erros,
+#limite-erros {
+  color: var(--texto-primario);
+  font-weight: 700;
+}
+
+/* ============================================================================
+   COLUNA DE INFORMAÇÕES — terminal da palavra, letras usadas, teclado
+   ============================================================================ */
+.coluna-informacoes {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.mensagem-status {
+  background-color: var(--bg-painel-alt);
+  border-left: 3px solid var(--verde-gama);
+  padding: 11px 14px;
+  border-radius: var(--raio-sutil);
+  min-height: 1.4em;
+  font-size: 0.92rem;
+}
+
+.area-palavra {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Cada letra da palavra secreta é uma célula de terminal: fundo levemente
+   mais escuro que o painel, acento inferior fino. Quando a letra já foi
+   revelada (a <span> deixa de estar vazia), :not(:empty) aplica um brilho
+   sutil — um efeito dinâmico resolvido inteiramente em CSS, sem precisar
+   de nenhuma classe extra vinda do JavaScript. */
+.celula-letra {
+  width: 36px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--fonte-dados);
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--texto-terciario);
+  background-color: var(--bg-painel-alt);
+  border: 1px solid var(--linha-painel);
+  border-bottom: 3px solid var(--linha-painel-forte);
+  border-radius: var(--raio-sutil);
+  text-transform: uppercase;
+  transition: all 0.25s ease;
+}
+
+.celula-letra:not(:empty) {
+  color: var(--verde-gama-forte);
+  background-color: rgba(95, 217, 122, 0.08);
+  border-bottom-color: var(--verde-gama);
+}
+
+.titulo-bloco-pequeno {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--texto-secundario);
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.letras-usadas {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-height: 30px;
+}
+
+/* Cada letra tentada vira uma entrada de log monoespaçada — "[A]" em
+   verde para acerto, vermelho para erro — em vez de um quadrado colorido
+   sólido. Reforça a metáfora de leitura de instrumento em vez de "chip"
+   decorativo de interface genérica. */
+.chip-letra {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--fonte-dados);
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: var(--raio-sutil);
+  border: 1px solid;
+}
+
+.chip-letra::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: currentColor;
+}
+
+.chip-correta {
+  color: var(--verde-gama-forte);
+  border-color: rgba(95, 217, 122, 0.4);
+  background-color: rgba(95, 217, 122, 0.08);
+}
+
+.chip-errada {
+  color: var(--vermelho-critico);
+  border-color: rgba(232, 73, 92, 0.4);
+  background-color: rgba(232, 73, 92, 0.08);
+}
+
+/* ----------------------------------------------------------------------------
+   TECLADO VIRTUAL — tecla com relevo físico (keycap), não botão plano
+   ---------------------------------------------------------------------------- */
+.teclado-virtual {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 6px;
+}
+
+.tecla-virtual {
+  font-family: var(--fonte-dados);
+  font-weight: 700;
+  font-size: 0.9rem;
+  padding: 10px 0;
+  color: var(--texto-primario);
+  background-color: var(--bg-painel-alt);
+  border: 1px solid var(--linha-painel-forte);
+  border-radius: 4px;
+  cursor: pointer;
+  /* Sombra interna inferior simula o bisel de uma tecla física. */
+  box-shadow: 0 2px 0 var(--linha-painel-forte);
+  transition: transform 0.1s, box-shadow 0.1s, border-color 0.15s, color 0.15s;
+}
+
+.tecla-virtual:hover:not(:disabled) {
+  border-color: var(--verde-gama);
+  color: var(--verde-gama-forte);
+}
+
+/* Ao "pressionar", a tecla desce e perde a sombra — o feedback tátil que
+   um botão achatado comum não transmite. */
+.tecla-virtual:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: 0 0 0 var(--linha-painel-forte);
+}
+
+.tecla-virtual:disabled {
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: translateY(1px);
+}
+
+.tecla-virtual.tecla-correta:disabled {
+  color: var(--verde-gama-forte);
+  border-color: var(--verde-gama);
+  background-color: rgba(95, 217, 122, 0.12);
+}
+
+.tecla-virtual.tecla-errada:disabled {
+  color: var(--vermelho-critico);
+  border-color: var(--vermelho-critico);
+  background-color: rgba(232, 73, 92, 0.1);
+}
+
+/* ============================================================================
+   OVERLAY DE VITÓRIA + CONFETE
+   ============================================================================ */
+.overlay-vitoria {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(5, 8, 7, 0.88);
+  z-index: 10;
+  padding: 16px;
+}
+
+.cartao-vitoria {
+  position: relative;
+  z-index: 2;
+  background-color: var(--bg-painel);
+  border: 1px solid var(--verde-gama);
+  border-radius: var(--raio-sutil);
+  padding: 36px 44px;
+  text-align: center;
+  box-shadow: 0 0 40px rgba(95, 217, 122, 0.25);
+}
+
+.etiqueta-sucesso {
+  color: var(--verde-gama);
+}
+
+.titulo-vitoria {
+  font-size: 1.9rem;
+  font-weight: 800;
+  color: var(--verde-gama-forte);
+  margin: 6px 0 14px;
+  text-shadow: 0 0 18px rgba(95, 217, 122, 0.45);
+}
+
+.palavra-revelada {
+  font-family: var(--fonte-dados);
+  color: var(--texto-primario);
+  margin-bottom: 22px;
+}
+
+/* Camada onde os pedaços de confete são injetados pelo JavaScript.
+   pointer-events: none garante que o confete nunca "roube" o clique do
+   botão "Jogar novamente" que fica por cima dele. */
+.camada-confete {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Cada .particula-confete recebe, via JS, posição horizontal, cor e
+   duração de queda diferentes (propriedades inline), mas a ANIMAÇÃO em
+   si — cair girando — é uma única regra CSS, reaproveitada por todas as
+   partículas. */
+.particula-confete {
+  position: absolute;
+  top: -10px;
+  width: 7px;
+  height: 13px;
+  opacity: 0.9;
+  animation-name: cair-girando;
+  animation-timing-function: ease-in;
+  animation-fill-mode: forwards;
+}
+
+@keyframes cair-girando {
+  from { transform: translateY(0) rotate(0deg); }
+  to   { transform: translateY(110vh) rotate(540deg); }
+}
+
+/* ============================================================================
+   ACESSIBILIDADE DE MOVIMENTO
+   Quem configurou o sistema para reduzir animações não deve receber o
+   pulso de radiação em loop nem a queda de confete girando — a
+   informação (vitória, nível de exposição) continua visível sem a
+   animação carregá-la.
+   ============================================================================ */
+@media (prefers-reduced-motion: reduce) {
+  .anel-pulso,
+  .particula-confete {
+    animation: none !important;
+  }
+}
+
+/* ============================================================================
+   RESPONSIVIDADE
+   Em telas estreitas, as duas colunas da partida (transformação e
+   informações) deixam de ficar lado a lado e passam a ficar uma embaixo
+   da outra, e o teclado reduz o número de colunas para caber sem gerar
+   rolagem horizontal.
+   ============================================================================ */
+@media (max-width: 700px) {
+  .painel-partida {
+    grid-template-columns: 1fr;
+  }
+
+  .teclado-virtual {
+    grid-template-columns: repeat(6, 1fr);
+  }
+
+  .titulo-jogo {
+    font-size: 2rem;
+  }
+
+  .cartao-vitoria {
+    padding: 28px 24px;
+  }
+}

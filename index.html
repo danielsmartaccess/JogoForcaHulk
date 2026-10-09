@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Forca Gama — Evolução Hulk</title>
+
+  <!--
+    Estrutura, aparência e comportamento ficam em arquivos separados
+    (HTML / CSS / JS). Isso facilita manutenção: um estudante consegue
+    alterar o visual sem tocar na lógica do jogo, e vice-versa.
+  -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div class="tela-jogo">
+
+    <header class="cabecalho">
+      <p class="etiqueta-equipamento">Console de Contenção · Projeto Gama</p>
+      <h1 class="titulo-jogo">Forca Gama</h1>
+      <p class="subtitulo">Descubra a palavra antes que Bruce Banner perca o controle.</p>
+      <!-- Faixa de risco: motivo visual reaproveitado também no medidor
+           de exposição, para dar uma identidade única ao jogo em vez de
+           uma borda genérica. -->
+      <div class="faixa-risco" aria-hidden="true"></div>
+    </header>
+
+    <!--
+      ETAPA 1 do fluxo: tela de configuração.
+      O jogador escolhe dificuldade e, em seguida, categoria. Só depois
+      disso uma partida é efetivamente criada (ver RF01 no enunciado:
+      "iniciar uma partida" pressupõe que já existam esses parâmetros).
+    -->
+    <section id="tela-configuracao" class="painel-configuracao">
+
+      <div class="bloco-selecao">
+        <h2 class="titulo-bloco">1. Nível de radiação gama (dificuldade)</h2>
+        <!--
+          Os três botões abaixo são fixos porque o jogo sempre oferece
+          exatamente três graus de dificuldade. Já as categorias (bloco
+          seguinte) variam conforme a dificuldade escolhida, por isso
+          são geradas dinamicamente pelo JavaScript em vez de escritas
+          aqui no HTML.
+        -->
+        <div class="opcoes" id="opcoes-dificuldade">
+          <button class="botao-opcao" data-dificuldade="facil">Fácil</button>
+          <button class="botao-opcao" data-dificuldade="medio">Médio</button>
+          <button class="botao-opcao" data-dificuldade="dificil">Difícil</button>
+        </div>
+      </div>
+
+      <div class="bloco-selecao" id="bloco-categoria" hidden>
+        <h2 class="titulo-bloco">2. Tema da missão (categoria)</h2>
+        <div class="opcoes" id="opcoes-categoria">
+          <!-- Preenchido em tempo de execução por gerarOpcoesDeCategoria(). -->
+        </div>
+      </div>
+
+    </section>
+
+    <!--
+      ETAPA 2 do fluxo: tela da partida em si. Começa oculta (hidden) e
+      só é revelada quando uma categoria é escolhida e iniciarPartida()
+      é chamada no script.js.
+    -->
+    <section id="tela-partida" class="painel-partida" hidden>
+
+      <div class="coluna-transformacao">
+        <h2 class="rotulo-secao">Monitor de Sinais Vitais</h2>
+
+        <!--
+          Figura que substitui o desenho tradicional da forca.
+          O atributo data-estagio vai de "0" (Bruce calmo) a "6" (Hulk
+          furioso) e é a ÚNICA coisa que o JavaScript precisa alterar
+          para trocar a aparência inteira do retrato E do medidor de
+          exposição logo abaixo — toda a variação visual de cada
+          estágio é resolvida no CSS por seletores de atributo (ver
+          style.css). Isso mantém a responsabilidade de "como desenhar"
+          fora do JavaScript.
+        -->
+        <div id="figura-hulk" class="figura-hulk" data-estagio="0">
+
+          <svg class="retrato-transformacao" viewBox="0 0 200 200" role="img" aria-hidden="true">
+            <defs>
+              <radialGradient id="brilhoGama" cx="50%" cy="42%" r="55%">
+                <stop offset="0%" stop-color="currentColor" stop-opacity="0.5" />
+                <stop offset="100%" stop-color="currentColor" stop-opacity="0" />
+              </radialGradient>
+            </defs>
+
+            <!-- Pulso de radiação: um anel que cresce e esmaece em loop,
+                 ficando mais rápido e mais intenso a cada estágio. -->
+            <circle class="anel-pulso" cx="100" cy="92" r="60" />
+
+            <!-- Moldura de "scan" biométrico, como um visor de monitor. -->
+            <circle class="moldura-scan" cx="100" cy="92" r="86" />
+            <circle class="brilho-fundo" cx="100" cy="92" r="70" fill="url(#brilhoGama)" />
+
+            <!-- Corpo: ombros/tronco, braços e cabeça em formas simples,
+                 cujo preenchimento muda de tom de pele para verde
+                 conforme o estágio (ver .figura-corpo no CSS). -->
+            <g class="figura-corpo">
+              <path class="braco braco-esq" d="M72,116 C45,122 32,148 39,177 C42,191 58,193 62,181 C63,159 66,136 76,120 Z" />
+              <path class="braco braco-dir" d="M128,116 C155,122 168,148 161,177 C158,191 142,193 138,181 C137,159 134,136 124,120 Z" />
+              <path class="torso" d="M64,198 C59,150 62,122 73,108 C82,97 118,97 127,108 C138,122 141,150 136,198 Z" />
+              <circle class="cabeca" cx="100" cy="70" r="33" />
+
+              <!-- Forro visível no "V" do colarinho — fica por baixo das
+                   duas abas da camisa, dando profundidade à abertura. -->
+              <path class="forro-colarinho" d="M93,104 L100,99 L107,104 L103,123 L97,123 Z" />
+
+              <!-- Colarinho da camisa intacta: duas abas em espelho
+                   (não uma peça só), para ler como gola aberta de
+                   camisa, e não como uma gravata. Some a partir do
+                   estágio 4, quando o corpo "rasga" o tecido. -->
+              <path class="camisa-intacta" d="M72,108 L100,97 L92,124 L74,122 Z" />
+              <path class="camisa-intacta" d="M128,108 L100,97 L108,124 L126,122 Z" />
+
+              <!-- Camisa rasgada: bordas irregulares e mais abertas,
+                   só aparece nos estágios finais. -->
+              <path class="camisa-rasgada" d="M72,108 L86,103 L91,119 L98,105 L103,120 L110,104 L128,108 L123,133 L112,118 L105,135 L99,119 L92,135 L85,119 L77,132 Z" />
+            </g>
+          </svg>
+
+          <p id="rotulo-estagio" class="rotulo-estagio">Bruce Banner: calmo</p>
+
+          <!--
+            Medidor de exposição: 6 segmentos fixos que vão "acendendo"
+            conforme o atributo data-estagio do elemento pai aumenta.
+            Nenhum JavaScript extra é necessário — a contagem já existe
+            em data-estagio, então o CSS só precisa decidir, por
+            seletor de atributo, quantos segmentos mostrar ativos.
+          -->
+          <div class="gauge-exposicao" aria-hidden="true">
+            <span class="segmento-gauge"></span>
+            <span class="segmento-gauge"></span>
+            <span class="segmento-gauge"></span>
+            <span class="segmento-gauge"></span>
+            <span class="segmento-gauge"></span>
+            <span class="segmento-gauge"></span>
+          </div>
+        </div>
+
+        <p class="contador-erros">
+          Nível de exposição: <span id="contador-erros">0</span> / <span id="limite-erros">6</span>
+        </p>
+      </div>
+
+      <div class="coluna-informacoes">
+
+        <!--
+          role="status" faz leitores de tela anunciarem a mensagem
+          automaticamente sempre que ela mudar, sem precisar de um
+          clique adicional do jogador.
+        -->
+        <p id="mensagem-status" class="mensagem-status" role="status">
+          Escolha a dificuldade para começar.
+        </p>
+
+        <div id="area-palavra" class="area-palavra" aria-label="Palavra secreta">
+          <!-- Uma <span> por letra da palavra, gerada por renderizarPalavra(). -->
+        </div>
+
+        <div class="area-letras-usadas">
+          <h3 class="titulo-bloco-pequeno">Letras utilizadas</h3>
+          <div id="letras-usadas" class="letras-usadas"></div>
+        </div>
+
+        <div class="area-teclado">
+          <h3 class="titulo-bloco-pequeno">Teclado</h3>
+          <!--
+            As 26 letras NÃO são escritas aqui uma por uma: o script.js
+            monta esse teclado em um laço (criarTecladoVirtual), o que
+            evita repetição e centraliza a criação dos botões em um só
+            lugar caso o alfabeto ou o layout precise mudar no futuro.
+          -->
+          <div id="teclado-virtual" class="teclado-virtual"></div>
+        </div>
+
+        <button id="botao-nova-partida" class="botao-primario">
+          Nova Partida
+        </button>
+      </div>
+
+    </section>
+
+    <!--
+      Overlay de vitória. Fica por cima da tela da partida (não a
+      substitui) para que o jogador ainda veja a palavra revelada e o
+      estado final da transformação ao fundo, junto da comemoração.
+    -->
+    <section id="tela-vitoria" class="overlay-vitoria" hidden>
+      <div id="camada-confete" class="camada-confete" aria-hidden="true"></div>
+      <div class="cartao-vitoria">
+        <p class="etiqueta-equipamento etiqueta-sucesso">Contenção bem-sucedida</p>
+        <h2 class="titulo-vitoria">Missão Cumprida</h2>
+        <p id="palavra-revelada-vitoria" class="palavra-revelada"></p>
+        <button id="botao-jogar-novamente" class="botao-primario">
+          Jogar novamente
+        </button>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
