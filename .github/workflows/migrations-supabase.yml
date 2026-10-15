@@ -1,0 +1,42 @@
+name: Migrations Supabase
+
+# Aplica no projeto remoto as migrations novas de supabase/migrations.
+# Exige os secrets SUPABASE_ACCESS_TOKEN e SUPABASE_DB_PASSWORD (ver README).
+on:
+  push:
+    branches: [main]
+    paths:
+      - supabase/migrations/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migrations-supabase
+  cancel-in-progress: false
+
+env:
+  SUPABASE_PROJECT_REF: dmcxzxkmxdhmufltlkel
+  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+  SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+jobs:
+  aplicar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.121.0
+
+      - name: Vincular ao projeto
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      # Mostra o que será aplicado antes de aplicar; um erro aqui evita um push parcial.
+      - name: Prévia das migrations pendentes
+        run: supabase db push --dry-run
+
+      - name: Aplicar migrations
+        run: supabase db push
