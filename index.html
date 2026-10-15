@@ -3,207 +3,55 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Forca Gama — Evolução Hulk</title>
-
-  <!--
-    Estrutura, aparência e comportamento ficam em arquivos separados
-    (HTML / CSS / JS). Isso facilita manutenção: um estudante consegue
-    alterar o visual sem tocar na lógica do jogo, e vice-versa.
-  -->
+  <meta name="theme-color" content="#0a0f0d">
+  <title>Forca Gama — sua jornada</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
-  <div class="tela-jogo">
-
+  <main class="aplicacao">
     <header class="cabecalho">
-      <p class="etiqueta-equipamento">Console de Contenção · Projeto Gama</p>
-      <h1 class="titulo-jogo">Forca Gama</h1>
-      <p class="subtitulo">Descubra a palavra antes que Bruce Banner perca o controle.</p>
-      <!-- Faixa de risco: motivo visual reaproveitado também no medidor
-           de exposição, para dar uma identidade única ao jogo em vez de
-           uma borda genérica. -->
-      <div class="faixa-risco" aria-hidden="true"></div>
+      <div class="marca"><span class="marca-simbolo" aria-hidden="true">γ</span><div><p class="etiqueta-equipamento">Console de contenção · Projeto Gama</p><h1 class="titulo-jogo">Forca Gama</h1></div></div>
+      <div id="cabecalho-jogador" class="cabecalho-jogador" hidden><span id="nome-cabecalho"></span><span class="streak-mini">🔥 <b id="streak-cabecalho">0</b></span><button id="trocar-usuario-cabecalho" class="botao-texto" type="button">Trocar</button></div>
     </header>
 
-    <!--
-      ETAPA 1 do fluxo: tela de configuração.
-      O jogador escolhe dificuldade e, em seguida, categoria. Só depois
-      disso uma partida é efetivamente criada (ver RF01 no enunciado:
-      "iniciar uma partida" pressupõe que já existam esses parâmetros).
-    -->
-    <section id="tela-configuracao" class="painel-configuracao">
-
-      <div class="bloco-selecao">
-        <h2 class="titulo-bloco">1. Nível de radiação gama (dificuldade)</h2>
-        <!--
-          Os três botões abaixo são fixos porque o jogo sempre oferece
-          exatamente três graus de dificuldade. Já as categorias (bloco
-          seguinte) variam conforme a dificuldade escolhida, por isso
-          são geradas dinamicamente pelo JavaScript em vez de escritas
-          aqui no HTML.
-        -->
-        <div class="opcoes" id="opcoes-dificuldade">
-          <button class="botao-opcao" data-dificuldade="facil">Fácil</button>
-          <button class="botao-opcao" data-dificuldade="medio">Médio</button>
-          <button class="botao-opcao" data-dificuldade="dificil">Difícil</button>
-        </div>
-      </div>
-
-      <div class="bloco-selecao" id="bloco-categoria" hidden>
-        <h2 class="titulo-bloco">2. Tema da missão (categoria)</h2>
-        <div class="opcoes" id="opcoes-categoria">
-          <!-- Preenchido em tempo de execução por gerarOpcoesDeCategoria(). -->
-        </div>
-      </div>
-
+    <section id="tela-identificacao" class="tela tela-identificacao" aria-labelledby="titulo-identificacao">
+      <div class="painel painel-boas-vindas"><p class="etiqueta-equipamento">Sua jornada começa aqui</p><h2 id="titulo-identificacao">Olá! Como podemos chamar você?</h2><p id="texto-identificacao" class="texto-secundario">Conectando…</p><form id="form-identificacao"><label for="nome-jogador">Seu nome ou apelido</label><input id="nome-jogador" name="nome" maxlength="24" autocomplete="nickname" placeholder="Ex.: Dani" required><button class="botao-primario" type="submit">Entrar na jornada <span aria-hidden="true">→</span></button></form><div id="boas-vindas-retorno" class="boas-vindas-retorno" hidden><p id="mensagem-retorno"></p><button id="botao-continuar" class="botao-primario" type="button">Continuar</button><button id="botao-trocar-usuario" class="botao-secundario" type="button">Trocar usuário</button></div></div>
+      <div class="painel painel-chamada"><span class="orbita" aria-hidden="true">🧠</span><p class="etiqueta-equipamento">Jogue. Aprenda. Evolua.</p><h2>Você está construindo uma sequência.</h2><p>Partidas rápidas, desafios de palavras e uma jornada que acompanha seu progresso.</p><div class="chamada-sinais"><span>🎯 Desafio</span><span>🔥 Constância</span><span>🏆 Conquistas</span></div></div>
     </section>
 
-    <!--
-      ETAPA 2 do fluxo: tela da partida em si. Começa oculta (hidden) e
-      só é revelada quando uma categoria é escolhida e iniciarPartida()
-      é chamada no script.js.
-    -->
-    <section id="tela-partida" class="painel-partida" hidden>
+    <section id="tela-painel" class="tela tela-painel" hidden>
+      <div class="painel-boas-vindas-painel"><div><p class="etiqueta-equipamento">Central da jornada</p><h2>Treine sua mente, <span id="nome-painel"></span>.</h2><p class="texto-secundario">Escolha um desafio e mantenha sua sequência viva.</p></div><div class="jornada"><span id="avatar-jornada" class="avatar-jornada" aria-hidden="true">🌱</span><span><small>SUA EVOLUÇÃO</small><b id="rotulo-jornada">Semente</b></span></div></div>
+      <div class="linha-online"><span>👥 <b id="online-geral">1.284</b> estimados jogando</span><span>🎯 <b id="online-categoria">326</b> nesta categoria</span><span>🏆 <span id="rotulo-posicao">Sua posição local:</span> <b id="posicao-ranking">#6</b></span><small id="rotulo-dados-online">Dados demonstrativos</small></div>
 
-      <div class="coluna-transformacao">
-        <h2 class="rotulo-secao">Monitor de Sinais Vitais</h2>
-
-        <!--
-          Figura que substitui o desenho tradicional da forca.
-          O atributo data-estagio vai de "0" (Bruce calmo) a "6" (Hulk
-          furioso) e é a ÚNICA coisa que o JavaScript precisa alterar
-          para trocar a aparência inteira do retrato E do medidor de
-          exposição logo abaixo — toda a variação visual de cada
-          estágio é resolvida no CSS por seletores de atributo (ver
-          style.css). Isso mantém a responsabilidade de "como desenhar"
-          fora do JavaScript.
-        -->
-        <div id="figura-hulk" class="figura-hulk" data-estagio="0">
-
-          <svg class="retrato-transformacao" viewBox="0 0 200 200" role="img" aria-hidden="true">
-            <defs>
-              <radialGradient id="brilhoGama" cx="50%" cy="42%" r="55%">
-                <stop offset="0%" stop-color="currentColor" stop-opacity="0.5" />
-                <stop offset="100%" stop-color="currentColor" stop-opacity="0" />
-              </radialGradient>
-            </defs>
-
-            <!-- Pulso de radiação: um anel que cresce e esmaece em loop,
-                 ficando mais rápido e mais intenso a cada estágio. -->
-            <circle class="anel-pulso" cx="100" cy="92" r="60" />
-
-            <!-- Moldura de "scan" biométrico, como um visor de monitor. -->
-            <circle class="moldura-scan" cx="100" cy="92" r="86" />
-            <circle class="brilho-fundo" cx="100" cy="92" r="70" fill="url(#brilhoGama)" />
-
-            <!-- Corpo: ombros/tronco, braços e cabeça em formas simples,
-                 cujo preenchimento muda de tom de pele para verde
-                 conforme o estágio (ver .figura-corpo no CSS). -->
-            <g class="figura-corpo">
-              <path class="braco braco-esq" d="M72,116 C45,122 32,148 39,177 C42,191 58,193 62,181 C63,159 66,136 76,120 Z" />
-              <path class="braco braco-dir" d="M128,116 C155,122 168,148 161,177 C158,191 142,193 138,181 C137,159 134,136 124,120 Z" />
-              <path class="torso" d="M64,198 C59,150 62,122 73,108 C82,97 118,97 127,108 C138,122 141,150 136,198 Z" />
-              <circle class="cabeca" cx="100" cy="70" r="33" />
-
-              <!-- Forro visível no "V" do colarinho — fica por baixo das
-                   duas abas da camisa, dando profundidade à abertura. -->
-              <path class="forro-colarinho" d="M93,104 L100,99 L107,104 L103,123 L97,123 Z" />
-
-              <!-- Colarinho da camisa intacta: duas abas em espelho
-                   (não uma peça só), para ler como gola aberta de
-                   camisa, e não como uma gravata. Some a partir do
-                   estágio 4, quando o corpo "rasga" o tecido. -->
-              <path class="camisa-intacta" d="M72,108 L100,97 L92,124 L74,122 Z" />
-              <path class="camisa-intacta" d="M128,108 L100,97 L108,124 L126,122 Z" />
-
-              <!-- Camisa rasgada: bordas irregulares e mais abertas,
-                   só aparece nos estágios finais. -->
-              <path class="camisa-rasgada" d="M72,108 L86,103 L91,119 L98,105 L103,120 L110,104 L128,108 L123,133 L112,118 L105,135 L99,119 L92,135 L85,119 L77,132 Z" />
-            </g>
-          </svg>
-
-          <p id="rotulo-estagio" class="rotulo-estagio">Bruce Banner: calmo</p>
-
-          <!--
-            Medidor de exposição: 6 segmentos fixos que vão "acendendo"
-            conforme o atributo data-estagio do elemento pai aumenta.
-            Nenhum JavaScript extra é necessário — a contagem já existe
-            em data-estagio, então o CSS só precisa decidir, por
-            seletor de atributo, quantos segmentos mostrar ativos.
-          -->
-          <div class="gauge-exposicao" aria-hidden="true">
-            <span class="segmento-gauge"></span>
-            <span class="segmento-gauge"></span>
-            <span class="segmento-gauge"></span>
-            <span class="segmento-gauge"></span>
-            <span class="segmento-gauge"></span>
-            <span class="segmento-gauge"></span>
-          </div>
-        </div>
-
-        <p class="contador-erros">
-          Nível de exposição: <span id="contador-erros">0</span> / <span id="limite-erros">6</span>
-        </p>
+      <div class="painel-grid">
+        <section class="painel painel-desafio" aria-labelledby="titulo-desafio"><div class="secao-cabecalho"><div><p class="etiqueta-equipamento">Próxima missão</p><h3 id="titulo-desafio">Escolha seu desafio</h3></div><span id="sinal-modo" class="sinal-ao-vivo">● LOCAL</span></div>
+          <div class="bloco-selecao"><h4 class="titulo-bloco">Nível de desafio</h4><div class="opcoes" id="opcoes-dificuldade"><button type="button" class="botao-opcao" data-dificuldade="facil" aria-pressed="false">Fácil <small>×1</small></button><button type="button" class="botao-opcao" data-dificuldade="medio" aria-pressed="false">Médio <small>×2</small></button><button type="button" class="botao-opcao" data-dificuldade="dificil" aria-pressed="false">Difícil <small>×3</small></button></div></div>
+          <div class="bloco-selecao" id="bloco-categoria" hidden><h4 class="titulo-bloco">Escolha uma categoria</h4><div class="opcoes opcoes-categoria" id="opcoes-categoria"></div></div>
+          <p id="dica-desafio" class="dica-desafio">Médio e Difícil oferecem mais pontos e recompensas.</p>
+        </section>
+        <section class="painel painel-progresso"><div class="secao-cabecalho"><div><p class="etiqueta-equipamento">Placar de jornada</p><h3>Seu progresso</h3></div><span class="nivel-badge">⭐ NÍVEL <b id="nivel-jogador">1</b></span></div><div class="metricas"><div><strong id="pontuacao-jogador">0</strong><span>PONTOS</span></div><div><strong id="vitorias-jogador">0</strong><span>VITÓRIAS</span></div><div><strong id="streak-jogador">0</strong><span>SEQUÊNCIA 🔥</span></div></div><div class="barra-progresso-wrap"><div class="linha-label"><span>Próximo nível</span><span id="progresso-nivel-texto">0 / 300 XP</span></div><div class="barra-progresso" role="progressbar" aria-label="Progresso para o próximo nível" aria-valuemin="0" aria-valuemax="100"><span id="progresso-nivel"></span></div></div><div class="saude-cognitiva"><div class="linha-label"><b>🧠 Atividade cognitiva</b><span id="pontos-cognitivos">0 pontos</span></div><div class="barra-progresso barra-cognitiva" role="progressbar" aria-label="Atividade cognitiva lúdica" aria-valuemin="0" aria-valuemax="100"><span id="progresso-cognitivo"></span></div><small>Indicador lúdico de atividade na plataforma.</small></div></section>
       </div>
 
-      <div class="coluna-informacoes">
+      <div class="painel-grid painel-grid-inferior"><section class="painel painel-ranking"><div class="secao-cabecalho"><div><p id="etiqueta-ranking" class="etiqueta-equipamento">Placar demonstrativo</p><h3 id="titulo-ranking">🏆 Ranking local</h3></div><span id="selo-ranking" class="sinal-demo">SIMULADO</span></div><ol id="lista-ranking" class="lista-ranking"></ol><p id="nota-ranking" class="nota-demo">Nomes e pontuações de demonstração; nenhum dado online.</p></section><section class="painel painel-conquistas"><div class="secao-cabecalho"><div><p class="etiqueta-equipamento">Marcos da jornada</p><h3>Conquistas</h3></div><span id="contador-conquistas" class="contador-conquistas">0 / 6</span></div><div id="lista-conquistas" class="lista-conquistas"></div><button class="botao-texto" type="button" data-abrir="recompensas">Ver recompensas e Oportuni Clube →</button></section></div>
 
-        <!--
-          role="status" faz leitores de tela anunciarem a mensagem
-          automaticamente sempre que ela mudar, sem precisar de um
-          clique adicional do jogador.
-        -->
-        <p id="mensagem-status" class="mensagem-status" role="status">
-          Escolha a dificuldade para começar.
-        </p>
-
-        <div id="area-palavra" class="area-palavra" aria-label="Palavra secreta">
-          <!-- Uma <span> por letra da palavra, gerada por renderizarPalavra(). -->
-        </div>
-
-        <div class="area-letras-usadas">
-          <h3 class="titulo-bloco-pequeno">Letras utilizadas</h3>
-          <div id="letras-usadas" class="letras-usadas"></div>
-        </div>
-
-        <div class="area-teclado">
-          <h3 class="titulo-bloco-pequeno">Teclado</h3>
-          <!--
-            As 26 letras NÃO são escritas aqui uma por uma: o script.js
-            monta esse teclado em um laço (criarTecladoVirtual), o que
-            evita repetição e centraliza a criação dos botões em um só
-            lugar caso o alfabeto ou o layout precise mudar no futuro.
-          -->
-          <div id="teclado-virtual" class="teclado-virtual"></div>
-        </div>
-
-        <button id="botao-nova-partida" class="botao-primario">
-          Nova Partida
-        </button>
-      </div>
-
+      <div class="faixa-inferior"><div class="oportuni-mini"><span aria-hidden="true">🎁</span><div><b>Oportuni Clube</b><small>Benefícios demonstrativos para sua jornada</small></div><button type="button" class="botao-texto" data-abrir="recompensas">Explorar →</button></div><div class="apoio-mini"><span>✨ Apoie a evolução</span><button type="button" class="botao-texto" data-abrir="apoio">Apoio e Plus →</button></div></div>
+      <nav class="atalhos-jornada" aria-label="Mais da sua jornada"><button type="button" data-modal="progresso">📊 Progresso</button><button type="button" data-modal="conquistas">🏅 Conquistas</button><button type="button" data-modal="ranking">🏆 Ranking</button><button type="button" data-abrir="recompensas">🎁 Recompensas</button><button type="button" data-abrir="apoio">❤️ Apoie / Plus</button></nav>
     </section>
 
-    <!--
-      Overlay de vitória. Fica por cima da tela da partida (não a
-      substitui) para que o jogador ainda veja a palavra revelada e o
-      estado final da transformação ao fundo, junto da comemoração.
-    -->
-    <section id="tela-vitoria" class="overlay-vitoria" hidden>
-      <div id="camada-confete" class="camada-confete" aria-hidden="true"></div>
-      <div class="cartao-vitoria">
-        <p class="etiqueta-equipamento etiqueta-sucesso">Contenção bem-sucedida</p>
-        <h2 class="titulo-vitoria">Missão Cumprida</h2>
-        <p id="palavra-revelada-vitoria" class="palavra-revelada"></p>
-        <button id="botao-jogar-novamente" class="botao-primario">
-          Jogar novamente
-        </button>
-      </div>
+    <section id="tela-partida" class="tela tela-partida" aria-label="Partida em andamento" hidden>
+      <div class="partida-topo"><div><p class="etiqueta-equipamento">Missão em andamento</p><h2><span id="categoria-partida">Categoria</span> <span class="separador">/</span> <span id="dificuldade-partida">Médio</span></h2></div><div class="placar-partida"><span>🔥 <b id="streak-partida">0</b></span><span>⭐ NÍVEL <b id="nivel-partida">1</b></span><span>+<b id="multiplicador-partida">2×</b> PONTOS</span></div><button id="botao-sair-partida" type="button" class="botao-texto">Sair da partida</button></div>
+      <div class="painel-partida"><div class="coluna-transformacao"><h3 class="rotulo-secao">Monitor de sinais vitais</h3><div id="figura-hulk" class="figura-hulk" data-estagio="0"><svg class="retrato-transformacao" viewBox="0 0 200 200" role="img" aria-label="Ilustração da transformação de Bruce Banner"><defs><radialGradient id="brilhoGama" cx="50%" cy="42%" r="55%"><stop offset="0%" stop-color="currentColor" stop-opacity=".5"/><stop offset="100%" stop-color="currentColor" stop-opacity="0"/></radialGradient></defs><circle class="anel-pulso" cx="100" cy="92" r="60"/><circle class="moldura-scan" cx="100" cy="92" r="86"/><circle class="brilho-fundo" cx="100" cy="92" r="70" fill="url(#brilhoGama)"/><g class="figura-corpo"><path class="braco braco-esq" d="M72 116C45 122 32 148 39 177c3 14 19 16 23 4 1-22 4-45 14-61z"/><path class="braco braco-dir" d="M128 116c27 6 40 32 33 61-3 14-19 16-23 4-1-22-4-45-14-61z"/><path class="torso" d="M64 198c-5-48-2-76 9-90 9-11 45-11 54 0 11 14 14 42 9 90z"/><circle class="cabeca" cx="100" cy="70" r="33"/><path class="forro-colarinho" d="m93 104 7-5 7 5-4 19h-6z"/><path class="camisa-intacta" d="m72 108 28-11-8 27-18-2zm56 0-28-11 8 27 18-2z"/><path class="camisa-rasgada" d="m72 108 14-5 5 16 7-14 5 15 7-16 18 4-5 25-11-15-7 17-6-16-7 16-7-16-8 13z"/></g></svg><p id="rotulo-estagio" class="rotulo-estagio">Bruce Banner: calmo</p><div class="gauge-exposicao" aria-label="Exposição gama"><span class="segmento-gauge"></span><span class="segmento-gauge"></span><span class="segmento-gauge"></span><span class="segmento-gauge"></span><span class="segmento-gauge"></span><span class="segmento-gauge"></span></div></div><p class="contador-erros">Exposição: <b id="contador-erros">0</b> / 6</p></div>
+        <div class="coluna-informacoes"><div class="linha-jogo"><p id="mensagem-status" class="mensagem-status" role="status" aria-live="polite">Escolha uma letra para começar.</p><span id="streak-letras" class="streak-letras">🔥 0 seguidas</span></div><div class="progresso-palavra"><div class="linha-label"><span>Progresso da palavra</span><b id="progresso-palavra-texto">0%</b></div><div class="barra-progresso" role="progressbar" aria-label="Letras descobertas" aria-valuemin="0" aria-valuemax="100"><span id="progresso-palavra"></span></div></div><div id="area-palavra" class="area-palavra" aria-label="Palavra secreta"></div><div class="area-letras-usadas"><h3 class="titulo-bloco-pequeno">Letras utilizadas</h3><div id="letras-usadas" class="letras-usadas"></div></div><div class="area-teclado"><div class="teclado-titulo"><h3 class="titulo-bloco-pequeno">Teclado</h3><small>Use o teclado físico ou toque nas letras</small></div><div id="teclado-virtual" class="teclado-virtual" aria-label="Teclado virtual QWERTY"></div></div></div></div>
     </section>
 
-  </div>
+    <section id="tela-resultado" class="tela tela-resultado" hidden aria-labelledby="titulo-resultado"><div class="resultado-principal painel"><p id="etiqueta-resultado" class="etiqueta-equipamento">Relatório da missão</p><h2 id="titulo-resultado">Partida finalizada</h2><p id="palavra-revelada-resultado" class="palavra-revelada"></p><div class="recompensa-resumo"><div><strong id="pontos-resultado">+0</strong><span>pontos de jogo</span></div><div><strong id="cognitivo-resultado">+0</strong><span>pontos de treino mental</span></div><div><strong id="sequencia-resultado">0</strong><span>vitórias seguidas</span></div></div><div id="novidades-resultado" class="novidades-resultado" aria-live="polite"></div><div id="anuncio-mock" class="anuncio-mock"><span class="etiqueta-equipamento">Parceiro demonstrativo · anúncio após a partida</span><b>Conheça quem apoia novos desafios.</b><small>Espaço reservado para uma futura parceria. Nenhum anúncio real.</small></div><button id="botao-voltar-painel" class="botao-primario" type="button">Continuar jornada →</button><button id="botao-revanche" class="botao-secundario" type="button">Jogar outra categoria</button></div></section>
 
+    <section id="tela-modal" class="tela-modal" hidden aria-modal="true" role="dialog" aria-labelledby="titulo-modal"><div class="modal-cartao painel"><button id="fechar-modal" type="button" class="botao-fechar" aria-label="Fechar">×</button><p class="etiqueta-equipamento">Central do jogador</p><h2 id="titulo-modal">Sua jornada</h2><div id="conteudo-modal"></div></div></section>
+  </main>
+  <!-- Supabase é opcional: se o CDN ou o backend falharem, o jogo roda no modo local. -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+  <script src="config.js"></script>
+  <script src="servico-supabase.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

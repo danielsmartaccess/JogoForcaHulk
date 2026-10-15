@@ -1,0 +1,49 @@
+name: Publicar site
+
+# Publica o front-end estático no GitHub Pages a cada push na main.
+# Só os arquivos do jogo vão para o ar; supabase/, testes e README ficam de fora.
+on:
+  push:
+    branches: [main]
+    paths:
+      - index.html
+      - style.css
+      - script.js
+      - config.js
+      - servico-supabase.js
+      - .github/workflows/publicar-site.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.implantacao.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Montar a pasta publicada
+        run: |
+          mkdir _site
+          cp index.html style.css script.js config.js servico-supabase.js _site/
+
+      - name: Checar sintaxe do JavaScript
+        run: for f in _site/*.js; do node --check "$f"; done
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: implantacao
+        uses: actions/deploy-pages@v4
