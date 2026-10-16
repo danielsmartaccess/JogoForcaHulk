@@ -1,19 +1,19 @@
 # Forca Gama — Jogo da Forca Broce B
 
 Jogo da forca temático (Bruce Banner → Hulk) em HTML/CSS/JS puro, com backend no
-**Supabase** (projeto `dmcxzxkmxdhmufltlkel`): perfil na nuvem, ranking global real,
-contador de jogadores online e regras de pontuação à prova de trapaça.
+**Supabase** (projeto `dmcxzxkmxdhmufltlkel`): contas com e-mail e senha, progresso na nuvem,
+ranking global real e regras de pontuação à prova de trapaça.
 
 ## Arquitetura
 
-```
+```text
 Navegador (index.html + script.js)
    │  supabase-js (CDN) + chave publishable (config.js)
    ▼
 Supabase
-   ├─ Auth ............ login anônimo (o jogador só digita um apelido)
-   ├─ PostgREST/RPC ... registrar_jogador, iniciar_partida, tentar_letra,
-   │                    obter_perfil, obter_ranking, obter_estatisticas
+   ├─ Auth ............ e-mail e senha, com confirmação de e-mail
+   ├─ PostgREST/RPC ... garantir_perfil, obter_perfil, iniciar_partida, tentar_letra,
+   │                    obter_ranking, obter_estatisticas
    └─ Postgres ........ tabelas com RLS; regras em funções SECURITY DEFINER
 ```
 
@@ -22,116 +22,132 @@ chega ao navegador quando a partida termina; cada letra é validada por `tentar_
 pontuação, conquistas e recompensas são calculadas no banco. O cliente só pode alterar
 preferências (nome, dificuldade, categoria, Plus) — o placar é protegido por grants de coluna.
 
-**Modo local (fallback):** se o CDN, a rede ou o Supabase falharem, o jogo continua com o
-motor local original (progresso no `localStorage`, ranking simulado). Os dois motores têm o
-mesmo contrato (`motorLocal` / `motorOnline` em `script.js`), então a interface é uma só.
+**Autenticação:** o cadastro envia o nome de exibição em `signUp({ options: { data } })`; um
+**trigger** em `auth.users` cria o perfil (funciona mesmo antes de o e-mail ser confirmado).
+`garantir_perfil()` recria o perfil de forma idempotente se ele não existir. A senha e o e-mail
+ficam **somente** no Supabase Auth; nenhuma tabela da aplicação os copia. A sessão é guardada e
+renovada pelo próprio supabase-js (a aplicação não mantém sessão paralela). Contas anônimas não
+jogam.
+
+**Modo local (fallback):** se a biblioteca não carregar, ou o servidor estiver fora do ar *e*
+não houver sessão salva, o jogo continua com o motor local original (progresso no
+`localStorage`, ranking simulado). Com sessão salva e servidor inacessível, o jogo oferece
+"Tentar novamente" em vez de trocar para o modo local. Os dois motores têm o mesmo contrato
+(`motorLocal` / `motorOnline` em `script.js`).
 
 | Arquivo | Papel |
 |---|---|
-| `index.html`, `style.css` | Estrutura e visual |
-| `script.js` | Interface + motor local |
-| `servico-supabase.js` | Camada fina de acesso ao Supabase |
+| `index.html`, `style.css` | Estrutura e visual (inclui telas de carregamento e autenticação) |
+| `script.js` | Interface, autenticação (modo online) e motor local |
+| `servico-supabase.js` | Camada fina de acesso ao Supabase (único cliente) |
 | `config.js` | URL e chave **publishable** (pública por design) |
-| `supabase/migrations/*_esquema_inicial.sql` | Tabelas, RLS, grants e RPCs |
-| `supabase/migrations/*_catalogo_inicial.sql` | Dificuldades, 16 categorias, 179 palavras, conquistas, recompensas |
-| `supabase/tests/regras_do_jogo.sql` | Testes SQL das regras e da segurança |
-| `supabase/tests/e2e.mjs` | Teste ponta a ponta com supabase-js |
+| `.env.example` | Variáveis dos **testes** (o site não lê `.env`) |
+| `supabase/migrations/*` | Esquema, RLS, grants, trigger de perfil e RPCs |
+| `supabase/consultas/jogadores_cadastrados.sql` | Consultas de leitura para o SQL Editor |
+| `supabase/tests/*` | Testes SQL, ponta a ponta e de interface |
 
 ### Modelo de dados
 
-| Tabela | Conteúdo | Acesso do cliente |
+| Tabela | Conteúdo | Acesso do cliente (RLS) |
 |---|---|---|
 | `dificuldades`, `categorias`, `conquistas`, `recompensas` | Catálogos | Leitura pública |
 | `palavras` | Banco de palavras | Nenhum (só via RPC) |
-| `jogadores` | Perfil + estatísticas (1 por usuário Auth) | Lê o próprio; altera só preferências |
-| `partidas` | Histórico, palavra, letras, status | Nenhum (só via RPC) |
+| `jogadores` | Perfil + progressão (1 por usuário do Auth; `id` = `auth.users.id`) | Lê o próprio; altera só nome, dificuldade, categoria e Plus. Sem INSERT/DELETE |
+| `partidas` | Histórico (`modalidade`, categoria, dificuldade, resultado, pontos, letras) | Lê as próprias, **sem** as colunas `palavra`/`palavra_id`. Escrita só via RPC |
 | `jogador_conquistas`, `jogador_recompensas` | Progressão | Lê as próprias |
 
-## Deploy do banco (uma vez)
+`jogadores` reúne perfil e progressão do Forca Gama (nome de exibição, pontuação, nível,
+sequências, conquistas). `partidas.modalidade` (padrão `forca`) prepara o histórico para novos
+jogos; quando um segundo jogo existir, o passo natural é separar a progressão por modalidade.
 
-Pré-requisitos: Node.js (o CLI roda via `npx`) e a **senha do banco** do projeto
-(Dashboard → Project Settings → Database).
+## Deploy do banco
+
+O workflow `.github/workflows/migrations-supabase.yml` aplica as migrations novas ao mesclar na
+`main`. Manualmente:
 
 ```powershell
-npx supabase login                                   # abre o navegador
-npx supabase link --project-ref dmcxzxkmxdhmufltlkel # pede a senha do banco
-npx supabase db push                                 # aplica as migrations
+npx supabase login
+npx supabase link --project-ref dmcxzxkmxdhmufltlkel   # pede a senha do banco
+npx supabase db push
 ```
 
-Depois, **habilite o login anônimo** no dashboard:
-Authentication → Sign In / Providers → **Allow anonymous sign-ins** → Save.
-Sem isso o jogo funciona, mas cai no modo local.
+### Configuração manual no Supabase (Dashboard)
 
-> Recomendado em produção: ative CAPTCHA (Authentication → Attack Protection) para
-> limitar criação automatizada de contas anônimas.
+1. **Authentication → URL Configuration:**
+   *Site URL* = `https://danielsmartaccess.github.io/JogoForcaHulk/` e adicione a mesma URL em
+   *Redirect URLs*. Sem isso o link do e-mail de confirmação aponta para `localhost`.
+2. **Authentication → Sign In / Providers:** mantenha **Email** ligado com *Confirm email*;
+   **desligue** *Allow anonymous sign-ins* (o jogo não usa mais e as RPCs já recusam anônimos).
+3. **Authentication → Attack Protection:** ative o CAPTCHA e revise o tamanho mínimo da senha
+   (a interface exige 8 caracteres).
+4. **E-mail em produção:** o servidor de e-mail padrão do Supabase tem limite baixo (poucos
+   e-mails por hora) e é só para testes. Configure um SMTP próprio em
+   *Authentication → Emails → SMTP Settings* antes de abrir o jogo ao público.
+5. Opcional: personalize o modelo do e-mail *Confirm signup* em português.
 
 ## Deploy do site
 
-O Supabase não hospeda o front-end. O site é estático (sem build) e é publicado no
-**GitHub Pages** pelo workflow `.github/workflows/publicar-site.yml`, a cada push na `main`.
-Só `index.html`, `style.css`, `script.js`, `config.js` e `servico-supabase.js` vão para o ar.
+O site é estático (sem build) e é publicado no **GitHub Pages** pelo workflow
+`.github/workflows/publicar-site.yml` a cada push na `main`. Só `index.html`, `style.css`,
+`script.js`, `config.js` e `servico-supabase.js` vão para o ar.
 
-Configuração única no repositório do GitHub:
+Configuração única: **Settings → Pages → Source: GitHub Actions**.
 
-1. **Settings → Pages → Build and deployment → Source: GitHub Actions.**
-2. Push na `main` (ou **Actions → Publicar site → Run workflow**). A URL aparece no job.
+Secrets do workflow de migrations (**Settings → Secrets and variables → Actions**):
+`SUPABASE_ACCESS_TOKEN` (https://supabase.com/dashboard/account/tokens) e
+`SUPABASE_DB_PASSWORD` (Project Settings → Database). Nunca vão para o frontend.
 
-Para outro host (Firebase Hosting, Netlify, Vercel), publique esses mesmos 5 arquivos.
-
-### Migrations automáticas (opcional)
-
-`.github/workflows/migrations-supabase.yml` aplica no projeto remoto as migrations novas
-quando `supabase/migrations/**` muda na `main` (mostra uma prévia com `--dry-run` antes).
-Crie dois secrets em **Settings → Secrets and variables → Actions**:
-
-| Secret | Onde obter |
-|---|---|
-| `SUPABASE_ACCESS_TOKEN` | https://supabase.com/dashboard/account/tokens |
-| `SUPABASE_DB_PASSWORD` | Dashboard → Project Settings → Database (pode ser redefinida ali) |
-
-Os nomes dos arquivos em `supabase/migrations/` precisam bater com as versões já registradas
-no remoto (`20261015160450`, `20261015160526`); novas migrations: `npx supabase migration new <nome>`.
-
-## Desenvolvimento local
+## Desenvolvimento local e testes
 
 ```powershell
-npx supabase start          # sobe Postgres + Auth + API em Docker
-npx supabase db reset       # recria o banco local aplicando as migrations
+npx supabase start     # Postgres + Auth + API + caixa de e-mail de teste (Docker)
+npx supabase db reset  # recria o banco local aplicando as migrations
 npx supabase stop
 ```
 
-Para apontar o front para o ambiente local, troque temporariamente `config.js` pela URL
-`http://127.0.0.1:54321` e a chave publishable exibida por `npx supabase status`.
+O `supabase/config.toml` liga a confirmação de e-mail, desliga login anônimo e exige senha de 8+
+caracteres, espelhando o projeto remoto. Para apontar o site ao ambiente local, troque
+temporariamente `config.js` pela URL `http://127.0.0.1:54321` e a chave de `npx supabase status`
+(e sirva a pasta em `http://127.0.0.1:3000`, que está na lista de redirecionamentos).
 
-### Testes
+Três camadas de teste (copie `.env.example` para `.env` ou exporte as variáveis):
 
 ```powershell
-# Regras + segurança (rollback no final, não deixa dados)
+# 1) Regras do jogo + RLS/grants (SQL; desfaz tudo no final)
 docker exec -i supabase_db_jogo-da-forca-broce-b psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/regras_do_jogo.sql
 
-# Ponta a ponta (em uma pasta com @supabase/supabase-js instalado)
-$env:SUPABASE_URL="http://127.0.0.1:54321"; $env:SUPABASE_KEY="<publishable local>"; node supabase/tests/e2e.mjs
+# 2) Ponta a ponta com o supabase-js real: cadastro, e-mail de confirmação, login, sessão,
+#    logout, progressão, isolamento entre usuários, falha de rede
+npm i @supabase/supabase-js@2.117.2 jsdom      # em uma pasta de trabalho
+node supabase/tests/e2e.mjs
+
+# 3) Interface: executa index.html + script.js em jsdom contra o backend local
+node supabase/tests/ui.mjs .
 ```
+
+> Os testes de interface usam jsdom: validam fluxo e estados, mas **não** layout, CSS nem foco
+> real. Faça também uma checagem manual no navegador.
 
 ## Operação
 
+- **Quem está cadastrado:** rode `supabase/consultas/jogadores_cadastrados.sql` no SQL Editor.
 - **Novas palavras** (sem deploy do site):
   `insert into public.palavras (dificuldade, categoria, palavra) values ('medio', 'geral', 'EXEMPLO');`
-  Use só letras A–Z maiúsculas, sem acento.
-- **Desativar uma palavra:** `update public.palavras set ativa = false where palavra = 'X';`
-- **Nova categoria:** insira em `public.categorias` **e** adicione a entrada em `CATEGORIAS`
-  no `script.js` (nome/ícone exibidos na interface).
-- **Mudança de regra de pontuação:** altere em uma nova migration (`public.tentar_letra`)
-  **e** em `aplicarFimDePartidaLocal` no `script.js`, para os dois modos ficarem iguais.
+  Use só letras A–Z maiúsculas, sem acento. Desativar: `update public.palavras set ativa = false where palavra = 'X';`
+- **Nova categoria:** insira em `public.categorias` **e** adicione a entrada em `CATEGORIAS` no `script.js`.
+- **Regra de pontuação:** altere em nova migration (`public.tentar_letra`) **e** em
+  `aplicarFimDePartidaLocal` no `script.js`, para os dois modos ficarem iguais.
+- **Apagar uma conta (LGPD):** exclua o usuário em *Authentication → Users*; o perfil, as partidas
+  e a progressão são removidos em cascata.
 
 ## Limitações conhecidas
 
-- Sair no meio da partida não conta como derrota (regra herdada do modo local) — permite
-  "fugir" de uma partida ruim sem perder a sequência de vitórias.
-- Contas anônimas ficam presas ao navegador: limpar os dados do site ou "Trocar usuário"
-  inicia uma jornada nova. Evolução natural: vincular e-mail/Google à conta anônima
-  (`supabase.auth.updateUser` / `linkIdentity`).
-- O banco de palavras local (fallback) continua no `script.js`; no modo online o servidor
-  pode ter palavras adicionais que o cliente não conhece.
-- Progresso salvo no `localStorage` antes desta versão não é migrado para a nuvem
-  (importar pontuação enviada pelo cliente abriria brecha para trapaça).
+- Sair no meio da partida não conta como derrota (regra herdada do modo local).
+- Não há recuperação de senha nem login social ainda.
+- O trigger nunca bloqueia um cadastro: se falhar, o perfil é criado no primeiro login por
+  `garantir_perfil()`.
+- Contas anônimas criadas antes desta versão (se existirem) deixam de poder jogar; o progresso
+  delas não é migrado.
+- O progresso do `localStorage` do modo local não é enviado à nuvem (aceitar pontuação do
+  cliente abriria brecha para trapaça).
+- O banco de palavras local (fallback) fica no `script.js`; o servidor pode ter palavras extras.

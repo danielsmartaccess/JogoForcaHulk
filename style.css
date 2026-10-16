@@ -996,3 +996,40 @@ body.em-partida .titulo-jogo { font-size: 1.25rem; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
+
+/* ============================================================================
+   AUTENTICAÇÃO E CARREGAMENTO
+   Reaproveitam o painel, os campos e os botões da identificação original;
+   aqui entram só os estados novos (abas, erros, aviso e indicador).
+   ============================================================================ */
+.form-auth { display: grid; gap: 10px; margin-top: 18px; }
+.form-auth label { color: var(--texto-secundario); font-size: .82rem; font-weight: 700; }
+.form-auth label small { font-weight: 400; color: var(--texto-terciario); }
+.form-auth input { width: 100%; color: var(--texto-primario); background: var(--bg-painel-alt); border: 1px solid var(--linha-painel-forte); padding: 13px 14px; font: 1rem var(--fonte-interface); border-radius: var(--raio-sutil); }
+.form-auth input:focus { border-color: var(--verde-gama); outline: 2px solid rgba(95,217,122,.2); }
+.form-auth input[aria-invalid="true"] { border-color: var(--vermelho-critico); }
+.form-auth .botao-primario { margin-top: 8px; }
+.form-auth .botao-primario:disabled { opacity: .6; cursor: progress; }
+
+.abas-auth { display: flex; gap: 0; margin-top: 18px; border-bottom: 1px solid var(--linha-painel-forte); }
+.aba-auth { flex: 1; min-height: 44px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--texto-secundario); cursor: pointer; font: 700 .86rem var(--fonte-interface); }
+.aba-auth:hover { color: var(--texto-primario); }
+.aba-auth.selecionada { color: var(--verde-gama-forte); border-bottom-color: var(--verde-gama); }
+
+.erro-auth, .aviso-global { color: #ffd9de; background: rgba(232,73,92,.12); border-left: 2px solid var(--vermelho-critico); padding: 9px 12px; font-size: .86rem; line-height: 1.4; }
+.aviso-confirmacao { margin-top: 14px; color: var(--texto-primario); background: rgba(95,217,122,.1); border-left: 2px solid var(--verde-gama); padding: 10px 12px; font-size: .88rem; line-height: 1.45; }
+.aviso-global { margin: 0 0 12px; }
+
+.tela-carregando { display: grid; place-items: center; min-height: min(520px, calc(100vh - 140px)); }
+.painel-carregando { width: min(440px, 100%); text-align: center; border-top: 2px solid var(--verde-gama); }
+.painel-carregando h2 { margin: 8px 0 18px; font-size: 1.3rem; }
+.indicador-carregando { width: 34px; height: 34px; margin: 0 auto; border: 3px solid var(--linha-painel-forte); border-top-color: var(--verde-gama); border-radius: 50%; animation: girar-carregando .9s linear infinite; }
+.acoes-carregando { display: grid; gap: 4px; margin-top: 6px; }
+.acoes-carregando .botao-secundario { margin: 4px 0 0; }
+.historico-partidas { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.historico-partidas li { display: flex; justify-content: space-between; gap: 10px; border: 1px solid var(--linha-painel); padding: 8px 10px; font-size: .82rem; color: var(--texto-secundario); }
+.historico-partidas b { color: var(--texto-primario); }
+.historico-partidas .vitoria { color: var(--verde-gama-forte); }
+.historico-partidas .derrota { color: var(--ambar-risco); }
+@keyframes girar-carregando { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .indicador-carregando { animation-duration: 3s; } }

@@ -4,9 +4,10 @@
 
    O HTML fornece a estrutura, o CSS transforma os estados em aparência e
    este arquivo coordena a interface. As regras de cada partida rodam em um
-   "motor": no modo online (Supabase) o servidor sorteia a palavra e calcula
-   a pontuação; no modo local (sem conexão) o mesmo contrato roda aqui, com
-   o progresso no localStorage e ranking/atividade simulados.
+   "motor": no modo online (Supabase) o jogador entra com e-mail e senha, o
+   servidor sorteia a palavra e calcula a pontuação; no modo local (só quando
+   o servidor está inacessível) o mesmo contrato roda aqui, com o progresso no
+   localStorage e ranking/atividade simulados.
    ============================================================================ */
 
 // O catálogo é organizado por dificuldade e categoria para que novos temas
@@ -149,7 +150,7 @@ let iniciandoPartida = false;
 // As referências ao DOM são coletadas uma vez; as funções de interface
 // abaixo usam os mesmos elementos, mantendo a fonte de verdade no estado.
 const $ = (id) => document.getElementById(id);
-const telas = { identificacao: $('tela-identificacao'), painel: $('tela-painel'), partida: $('tela-partida'), resultado: $('tela-resultado') };
+const telas = { carregando: $('tela-carregando'), autenticacao: $('tela-autenticacao'), identificacao: $('tela-identificacao'), painel: $('tela-painel'), partida: $('tela-partida'), resultado: $('tela-resultado') };
 const refs = {
   form: $('form-identificacao'), nome: $('nome-jogador'), retorno: $('boas-vindas-retorno'), mensagemRetorno: $('mensagem-retorno'),
   opcoesDificuldade: $('opcoes-dificuldade'), blocoCategoria: $('bloco-categoria'), opcoesCategoria: $('opcoes-categoria'),
@@ -175,9 +176,9 @@ function salvarPreferencias() {
 // Os textos de "dados simulados" só fazem sentido no modo local.
 function aplicarRotulosDoModo() {
   const rotulos = modoOnline
-    ? { texto: 'Seu progresso fica salvo na nuvem e você aparece no ranking global.', sinal: '● ONLINE', dados: 'Dados em tempo real', posicao: 'Sua posição global:', etiqueta: 'Placar global', titulo: '🏆 Ranking global', selo: 'AO VIVO', nota: 'Top jogadores de todos os dispositivos.' }
-    : { texto: 'Salvamos seu progresso neste navegador para você continuar quando voltar.', sinal: '● LOCAL', dados: 'Dados demonstrativos', posicao: 'Sua posição local:', etiqueta: 'Placar demonstrativo', titulo: '🏆 Ranking local', selo: 'SIMULADO', nota: 'Nomes e pontuações de demonstração; nenhum dado online.' };
-  $('texto-identificacao').textContent = rotulos.texto;
+    ? { sinal: '● ONLINE', dados: 'Dados em tempo real', posicao: 'Sua posição global:', etiqueta: 'Placar global', titulo: '🏆 Ranking global', selo: 'AO VIVO', nota: 'Top jogadores de todos os dispositivos.' }
+    : { sinal: '● LOCAL', dados: 'Dados demonstrativos', posicao: 'Sua posição local:', etiqueta: 'Placar demonstrativo', titulo: '🏆 Ranking local', selo: 'SIMULADO', nota: 'Nomes e pontuações de demonstração; nenhum dado online.' };
+  $('trocar-usuario-cabecalho').textContent = modoOnline ? 'Sair' : 'Trocar';
   $('sinal-modo').textContent = rotulos.sinal;
   $('rotulo-dados-online').textContent = rotulos.dados;
   $('rotulo-posicao').textContent = rotulos.posicao;
@@ -193,19 +194,9 @@ function mostrarTela(nome) {
   window.scrollTo(0, 0);
 }
 
-async function iniciarJornada(nome) {
-  if (modoOnline) {
-    try {
-      await ServicoOnline.entrar();
-      jogador = perfilDoServidor(await ServicoOnline.registrarJogador(nome.trim()));
-      return mostrarPainel();
-    } catch (erro) {
-      // Ex.: login anônimo desativado no projeto. O jogo não trava por isso.
-      console.warn('Login online indisponível; seguindo no modo local.', erro);
-      modoOnline = false;
-      aplicarRotulosDoModo();
-    }
-  }
+// Modo local: sem conta, o progresso fica só neste navegador. No modo online
+// a entrada é feita pelos formulários de autenticação (enviarLogin/enviarCadastro).
+function iniciarJornada(nome) {
   jogador = criarPerfil(nome.trim());
   salvarPerfil();
   mostrarPainel();
@@ -220,8 +211,359 @@ function mostrarIdentificacao() {
   else refs.nome.focus();
 }
 
+/* ----------------------------------------------------------------------------
+   AUTENTICAÇÃO (modo online)
+   Fluxo: carregando → (sessão válida?) → painel | login/cadastro.
+   Senhas nunca passam por aqui além do envio ao Supabase Auth; nada é gravado
+   no localStorage pela aplicação (a sessão é do próprio supabase-js).
+   ---------------------------------------------------------------------------- */
+const TAMANHO_MINIMO_SENHA = 8;
+const TAMANHO_MAXIMO_SENHA = 72; // limite do bcrypt usado pelo Supabase Auth
+const REGEX_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+let geracaoSessao = 0;       // muda a cada entrada/saída; descarta respostas atrasadas
+let abrindoSessao = null;    // promessa em andamento: junta chamadas concorrentes
+let inicializando = true;    // durante a partida da página, quem decide é inicializar()
+let enviandoFormulario = false;
+let temporizadorDoAviso = null;
+
+// Registra só o que ajuda a diagnosticar (nome, código e status): nunca e-mail, senha ou tokens.
+function registrarErro(contexto, erro) {
+  console.warn(`[${contexto}]`, erro?.name || 'Erro', erro?.code || '', erro?.status || '', erro?.message || '');
+}
+
+// O PostgREST devolve falhas de rede como objeto simples (sem código), por isso
+// também reconhecemos pela mensagem.
+function erroDeRede(erro) {
+  return erro instanceof TypeError || ['AbortError', 'TimeoutError', 'AuthRetryableFetchError'].includes(erro?.name) || erro?.status === 0
+    || (!erro?.code && /fetch|network|timeout|abort/i.test(erro?.message || ''));
+}
+
+function erroDeSessao(erro) {
+  return erro?.status === 401 || ['28000', 'PGRST301', 'PGRST303'].includes(erro?.code)
+    || erro?.name === 'AuthSessionMissingError' || /\bJWT\b/.test(erro?.message || '');
+}
+
+// Mensagens para o jogador: claras, sem detalhes técnicos e sem revelar se um e-mail existe.
+function traduzirErroDeAutenticacao(erro, contexto) {
+  if (erroDeRede(erro)) return 'Não foi possível conectar ao servidor. Verifique sua internet e tente de novo.';
+  switch (erro?.code) {
+    case 'invalid_credentials': return 'E-mail ou senha incorretos.';
+    case 'email_not_confirmed': return 'Confirme seu e-mail antes de entrar: procure a mensagem de confirmação na caixa de entrada (e no spam).';
+    case 'weak_password': return `Escolha uma senha mais forte, com pelo menos ${TAMANHO_MINIMO_SENHA} caracteres.`;
+    case 'over_email_send_rate_limit':
+    case 'over_request_rate_limit':
+    case 'over_sms_send_rate_limit': return 'Muitas tentativas em pouco tempo. Aguarde alguns minutos e tente novamente.';
+    case 'email_address_invalid': return 'Este endereço de e-mail não é aceito. Confira se digitou corretamente.';
+    case 'signup_disabled': return 'Novos cadastros estão desativados no momento.';
+    case 'user_already_exists':
+    case 'email_exists': return 'Não foi possível criar a conta com estes dados. Se você já tem conta, use "Entrar".';
+    default: return contexto === 'cadastro'
+      ? 'Não foi possível criar a conta agora. Tente novamente em instantes.'
+      : 'Não foi possível entrar agora. Tente novamente em instantes.';
+  }
+}
+
+function validarEmailESenha(email, senha) {
+  if (!email) return { campo: 'email', mensagem: 'Informe seu e-mail.' };
+  if (!REGEX_EMAIL.test(email)) return { campo: 'email', mensagem: 'Informe um e-mail válido, como nome@exemplo.com.' };
+  if (!senha) return { campo: 'senha', mensagem: 'Informe sua senha.' };
+  return null;
+}
+
+function validarCadastro({ nome, email, senha, confirmacao }) {
+  if (!nome) return { campo: 'nome', mensagem: 'Informe um nome de exibição.' };
+  if ([...nome].length > 24) return { campo: 'nome', mensagem: 'O nome de exibição pode ter até 24 caracteres.' };
+  const problema = validarEmailESenha(email, senha);
+  if (problema) return problema;
+  if (senha.length < TAMANHO_MINIMO_SENHA) return { campo: 'senha', mensagem: `A senha precisa ter pelo menos ${TAMANHO_MINIMO_SENHA} caracteres.` };
+  if (senha.length > TAMANHO_MAXIMO_SENHA) return { campo: 'senha', mensagem: `A senha pode ter no máximo ${TAMANHO_MAXIMO_SENHA} caracteres.` };
+  if (senha !== confirmacao) return { campo: 'confirmacao', mensagem: 'A confirmação não é igual à senha.' };
+  return null;
+}
+
+// Aviso global (fora dos formulários): some sozinho depois de alguns segundos.
+function mostrarAviso(texto) {
+  const aviso = $('aviso-global');
+  window.clearTimeout(temporizadorDoAviso);
+  aviso.textContent = texto;
+  aviso.hidden = !texto;
+  if (texto) temporizadorDoAviso = window.setTimeout(() => { aviso.hidden = true; }, 9000);
+}
+
+function limparErrosDoFormulario(form) {
+  form.querySelectorAll('input').forEach((campo) => campo.removeAttribute('aria-invalid'));
+  const erro = form.querySelector('.erro-auth');
+  erro.hidden = true;
+  erro.textContent = '';
+}
+
+// "problema" = { campo?, mensagem }; o campo recebe foco e marcação de erro.
+function mostrarErroDoFormulario(form, problema) {
+  limparErrosDoFormulario(form);
+  const erro = form.querySelector('.erro-auth');
+  erro.textContent = problema.mensagem;
+  erro.hidden = false;
+  const campo = problema.campo && form.querySelector(`[name="${problema.campo}"]`);
+  if (campo) {
+    campo.setAttribute('aria-invalid', 'true');
+    campo.focus();
+  }
+}
+
+function alternarEnvio(form, enviando, textoEnviando) {
+  const botao = form.querySelector('button[type="submit"]');
+  if (enviando) {
+    botao.dataset.rotulo = botao.innerHTML;
+    botao.textContent = textoEnviando;
+  } else if (botao.dataset.rotulo) {
+    botao.innerHTML = botao.dataset.rotulo;
+  }
+  botao.disabled = enviando;
+  form.setAttribute('aria-busy', String(enviando));
+}
+
+function selecionarAba(aba) {
+  const entrando = aba === 'entrar';
+  $('aba-entrar').classList.toggle('selecionada', entrando);
+  $('aba-entrar').setAttribute('aria-selected', String(entrando));
+  $('aba-cadastro').classList.toggle('selecionada', !entrando);
+  $('aba-cadastro').setAttribute('aria-selected', String(!entrando));
+  $('form-login').hidden = !entrando;
+  $('form-cadastro').hidden = entrando;
+  $('titulo-autenticacao').textContent = entrando ? 'Entre para continuar' : 'Crie sua conta';
+  limparErrosDoFormulario($('form-login'));
+  limparErrosDoFormulario($('form-cadastro'));
+}
+
+function mostrarCarregando(texto, comAcoes = false) {
+  mostrarTela('carregando');
+  $('cabecalho-jogador').hidden = true;
+  $('texto-carregando').textContent = texto;
+  $('indicador-carregando').hidden = comAcoes;
+  $('acoes-carregando').hidden = !comAcoes;
+  if (comAcoes) $('botao-tentar-novamente').focus();
+}
+
+function mostrarAutenticacao(mensagemDeErro = '') {
+  mostrarTela('autenticacao');
+  $('cabecalho-jogador').hidden = true;
+  selecionarAba('entrar');
+  if (mensagemDeErro) mostrarErroDoFormulario($('form-login'), { mensagem: mensagemDeErro });
+}
+
+// Ponto único de entrada quando não há jogador: conta (online) ou apelido (local).
+function mostrarEntrada() {
+  if (modoOnline) mostrarAutenticacao();
+  else mostrarIdentificacao();
+}
+
+// Descarta tudo que é privado e está em memória. Os dados salvos no servidor permanecem.
+function limparEstadoPrivado() {
+  geracaoSessao += 1;
+  jogador = null;
+  dadosOnline = { estatisticas: null, ranking: null };
+  ultimaPartida = null;
+  Object.assign(estadoDaPartida, { active: false, aguardando: false, partidaId: null, revelada: [], rodada: estadoDaPartida.rodada + 1 });
+  ['form-login', 'form-cadastro'].forEach((id) => $(id).reset());
+  $('aviso-confirmacao').hidden = true;
+  refs.opcoesCategoria.replaceChildren();
+  $('lista-ranking').replaceChildren();
+  $('lista-conquistas').replaceChildren();
+  refs.modal.hidden = true;
+  ['nome-cabecalho', 'nome-painel', 'streak-cabecalho'].forEach((id) => { $(id).textContent = ''; });
+}
+
+// Sessão inválida ou expirada: limpa memória e volta ao login. O signOut local
+// apenas remove o token vencido guardado pelo supabase-js.
+function encerrarSessaoLocal(mensagem) {
+  limparEstadoPrivado();
+  ServicoOnline.sair().then(({ error }) => { if (error) registrarErro('limpar sessão', error); })
+    .catch((erro) => registrarErro('limpar sessão', erro));
+  mostrarAutenticacao(mensagem);
+}
+
+async function sairDaConta() {
+  const botoes = [$('trocar-usuario-cabecalho'), $('botao-sair-carregando')];
+  botoes.forEach((botao) => { botao.disabled = true; });
+  try {
+    const { error } = await ServicoOnline.sair();
+    if (error) throw error;
+    limparEstadoPrivado();
+    mostrarAviso('');
+    mostrarAutenticacao();
+  } catch (erro) {
+    registrarErro('sair', erro);
+    mostrarAviso('Não foi possível encerrar a sessão agora. Verifique sua conexão e tente de novo.');
+  } finally {
+    botoes.forEach((botao) => { botao.disabled = false; });
+  }
+}
+
+// Carrega (ou cria, de forma idempotente) o perfil e abre o painel. Nunca lança
+// erro: falhas viram tela com "Tentar novamente", sem trocar dados por valores iniciais.
+function abrirSessao() {
+  if (abrindoSessao) return abrindoSessao;
+  const geracao = geracaoSessao;
+  abrindoSessao = (async () => {
+    mostrarCarregando('Carregando sua jornada…');
+    try {
+      const perfil = await ServicoOnline.garantirPerfil();
+      if (geracao !== geracaoSessao) return;
+      jogador = perfilDoServidor(perfil);
+      mostrarAviso('');
+      mostrarPainel();
+    } catch (erro) {
+      registrarErro('carregar perfil', erro);
+      if (geracao !== geracaoSessao) return;
+      if (erroDeSessao(erro)) return encerrarSessaoLocal('Sua sessão expirou. Entre novamente.');
+      mostrarCarregando(erroDeRede(erro)
+        ? 'Sem conexão com o servidor. Não foi possível carregar sua jornada.'
+        : 'Não foi possível carregar sua jornada agora.', true);
+    }
+  })().finally(() => { abrindoSessao = null; });
+  return abrindoSessao;
+}
+
+// Recupera a sessão persistida (inclusive a vinda do link de confirmação do e-mail).
+async function verificarSessao() {
+  mostrarCarregando('Verificando sua sessão…');
+  try {
+    const sessao = await ServicoOnline.obterSessao();
+    if (sessao) await abrirSessao();
+    else mostrarAutenticacao();
+  } catch (erro) {
+    registrarErro('recuperar sessão', erro);
+    mostrarCarregando('Não foi possível verificar sua sessão. Verifique sua conexão.', true);
+  }
+}
+
+// Eventos do Supabase Auth. Sem await/chamadas ao cliente aqui dentro (risco de
+// deadlock documentado): o trabalho é agendado para depois do callback.
+function tratarMudancaDeSessao(evento, sessao) {
+  window.setTimeout(() => {
+    if (!modoOnline) return;
+    if (evento === 'SIGNED_OUT' && jogador) {
+      encerrarSessaoLocal('Sua sessão terminou. Entre novamente para continuar.');
+    } else if (evento === 'SIGNED_IN' && sessao && !jogador && !abrindoSessao && !inicializando && !enviandoFormulario) {
+      // Ex.: e-mail confirmado ou login feito em outra aba.
+      abrirSessao();
+    }
+  }, 0);
+}
+
+async function enviarLogin(evento) {
+  evento.preventDefault();
+  const form = $('form-login');
+  const email = $('login-email').value.trim();
+  const senha = $('login-senha').value;
+  const problema = validarEmailESenha(email, senha);
+  if (problema) return mostrarErroDoFormulario(form, problema);
+  limparErrosDoFormulario(form);
+  enviandoFormulario = true;
+  alternarEnvio(form, true, 'Entrando…');
+  try {
+    const { error } = await ServicoOnline.entrar(email, senha);
+    if (error) throw error;
+    form.reset();
+    await abrirSessao();
+  } catch (erro) {
+    registrarErro('login', erro);
+    mostrarErroDoFormulario(form, { mensagem: traduzirErroDeAutenticacao(erro, 'login') });
+  } finally {
+    enviandoFormulario = false;
+    alternarEnvio(form, false);
+  }
+}
+
+async function enviarCadastro(evento) {
+  evento.preventDefault();
+  const form = $('form-cadastro');
+  const dados = {
+    nome: $('cadastro-nome').value.trim().replace(/\s+/g, ' '),
+    email: $('cadastro-email').value.trim(),
+    senha: $('cadastro-senha').value,
+    confirmacao: $('cadastro-confirmacao').value,
+  };
+  const problema = validarCadastro(dados);
+  if (problema) return mostrarErroDoFormulario(form, problema);
+  limparErrosDoFormulario(form);
+  enviandoFormulario = true;
+  alternarEnvio(form, true, 'Criando conta…');
+  try {
+    const { data, error } = await ServicoOnline.cadastrar(dados);
+    if (error) throw error;
+    form.reset();
+    if (data.session) {
+      await abrirSessao(); // confirmação de e-mail desligada no projeto: já há sessão
+    } else {
+      mostrarConfirmacaoPendente(dados.email);
+    }
+  } catch (erro) {
+    registrarErro('cadastro', erro);
+    mostrarErroDoFormulario(form, { mensagem: traduzirErroDeAutenticacao(erro, 'cadastro') });
+  } finally {
+    enviandoFormulario = false;
+    alternarEnvio(form, false);
+  }
+}
+
+// Mesma mensagem para e-mail novo ou já cadastrado: não revela se a conta existe.
+function mostrarConfirmacaoPendente(email) {
+  selecionarAba('entrar');
+  $('login-email').value = email;
+  const aviso = $('aviso-confirmacao');
+  aviso.textContent = `Enviamos uma mensagem para ${email}. Abra o link de confirmação (confira também o spam) e depois entre aqui. Se você já tinha conta com este e-mail, é só entrar.`;
+  aviso.hidden = false;
+  $('login-senha').focus();
+}
+
+// A resposta da última letra se perdeu depois de o servidor encerrar a partida: busca o progresso real.
+async function sincronizarPartidaEncerrada() {
+  estadoDaPartida.active = false;
+  try {
+    jogador = perfilDoServidor(await ServicoOnline.obterPerfil());
+  } catch (erro) {
+    registrarErro('sincronizar partida encerrada', erro);
+  }
+  mostrarAviso('Essa partida já havia sido encerrada no servidor. Seu progresso foi sincronizado.');
+  mostrarPainel();
+}
+
+// Últimas partidas concluídas, lidas direto da tabela (RLS: só as do próprio jogador).
+async function preencherHistorico() {
+  const alvo = $('historico-partidas');
+  if (!alvo) return;
+  const geracao = geracaoSessao;
+  alvo.textContent = 'Carregando…';
+  try {
+    const partidas = await ServicoOnline.obterHistorico(5);
+    if (geracao !== geracaoSessao || !alvo.isConnected) return;
+    if (!partidas.length) {
+      alvo.textContent = 'Você ainda não concluiu nenhuma partida.';
+      return;
+    }
+    const lista = document.createElement('ul');
+    lista.className = 'historico-partidas';
+    partidas.forEach((partida) => {
+      const item = document.createElement('li');
+      const quando = new Date(partida.finalizada_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      const resultado = document.createElement('b');
+      resultado.className = partida.status;
+      resultado.textContent = partida.status === 'vitoria' ? 'Vitória' : 'Derrota';
+      const detalhe = document.createElement('span');
+      detalhe.textContent = `${CATEGORIAS[partida.categoria]?.nome || partida.categoria} · ${DIFICULDADES[partida.dificuldade]?.nome || partida.dificuldade} · +${partida.pontos} pts · ${quando}`;
+      item.append(resultado, detalhe);
+      lista.appendChild(item);
+    });
+    alvo.replaceChildren(lista);
+  } catch (erro) {
+    registrarErro('carregar histórico', erro);
+    alvo.textContent = 'Não foi possível carregar o histórico agora.';
+  }
+}
+
 function mostrarPainel() {
-  if (!jogador) return mostrarIdentificacao();
+  if (!jogador) return mostrarEntrada();
   mostrarTela('painel');
   $('cabecalho-jogador').hidden = false;
   $('nome-cabecalho').textContent = jogador.name;
@@ -239,15 +581,18 @@ function mostrarPainel() {
 // Busca ranking e atividade reais sem bloquear a tela; ao chegar, redesenha.
 async function carregarDadosOnline() {
   if (!modoOnline) return;
+  const geracao = geracaoSessao;
   try {
     const [estatisticas, ranking] = await Promise.all([ServicoOnline.obterEstatisticas(), ServicoOnline.obterRanking(10)]);
+    if (geracao !== geracaoSessao) return; // houve saída/troca de conta no meio da busca
     dadosOnline = { estatisticas, ranking };
     if (jogador && !telas.painel.hidden) {
       gerarOpcoesDeCategoria(jogador.difficulty);
       atualizarPainel();
     }
   } catch (erro) {
-    console.warn('Não foi possível carregar ranking e atividade.', erro);
+    registrarErro('carregar ranking e atividade', erro);
+    if (erroDeSessao(erro) && geracao === geracaoSessao) encerrarSessaoLocal('Sua sessão expirou. Entre novamente.');
   }
 }
 
@@ -313,6 +658,9 @@ function atualizarPainel() {
   $('streak-jogador').textContent = jogador.winStreak;
   $('streak-cabecalho').textContent = jogador.winStreak;
   $('pontos-cognitivos').textContent = `${jogador.cognitiveScore} pontos de treino`;
+  $('subtitulo-painel').textContent = modoOnline && jogador.gamesPlayed > 0
+    ? `Bem-vindo de volta! Você já jogou ${jogador.gamesPlayed} ${jogador.gamesPlayed === 1 ? 'partida' : 'partidas'} e venceu ${jogador.wins}. Mantenha sua sequência viva.`
+    : 'Escolha um desafio e mantenha sua sequência viva.';
   const dentroDoNivel = jogador.score % 300;
   $('progresso-nivel-texto').textContent = `${dentroDoNivel} / 300 XP`;
   $('progresso-nivel').style.width = `${(dentroDoNivel / 300) * 100}%`;
@@ -439,7 +787,8 @@ async function iniciarPartida(dificuldade, categoria) {
   try {
     partida = await motor().iniciarPartida(dificuldade, categoria);
   } catch (erro) {
-    console.warn('Não foi possível iniciar a partida.', erro);
+    registrarErro('iniciar partida', erro);
+    if (modoOnline && erroDeSessao(erro)) return encerrarSessaoLocal('Sua sessão expirou. Entre novamente.');
     $('dica-desafio').textContent = 'Não foi possível iniciar a partida. Verifique sua conexão e tente de novo.';
     return;
   } finally {
@@ -491,8 +840,12 @@ async function processarTentativaDeLetra(entrada) {
   try {
     resultado = await motor().tentarLetra(estadoDaPartida.partidaId, letra);
   } catch (erro) {
-    console.warn('Falha ao enviar a letra.', erro);
-    refs.status.textContent = `Falha de conexão. Tente a letra ${letra} novamente.`;
+    registrarErro('enviar letra', erro);
+    if (rodada !== estadoDaPartida.rodada) return;
+    if (modoOnline && erroDeSessao(erro)) return encerrarSessaoLocal('Sua sessão expirou. Entre novamente.');
+    // A resposta da última letra pode ter se perdido depois de o servidor encerrar a partida.
+    if (modoOnline && erro?.code === '22023' && /encerrada/i.test(erro.message || '')) return sincronizarPartidaEncerrada();
+    refs.status.textContent = `Falha de conexão. A letra ${letra} não foi registrada; tente novamente.`;
     return;
   } finally {
     estadoDaPartida.aguardando = false;
@@ -711,7 +1064,8 @@ function abrirModal(tipo) {
     },
     progresso: () => {
       titulo.textContent = 'Seu progresso';
-      conteudo.innerHTML = `<div class="metricas metricas-modal"><div><strong>${jogador.gamesPlayed}</strong><span>PARTIDAS</span></div><div><strong>${jogador.wins}</strong><span>VITÓRIAS</span></div><div><strong>${jogador.bestWinStreak}</strong><span>MELHOR SEQUÊNCIA</span></div></div><p>Você descobriu ${jogador.lettersFound} letras e acumulou ${jogador.cognitiveScore} pontos de atividade cognitiva.</p>`;
+      conteudo.innerHTML = `<div class="metricas metricas-modal"><div><strong>${jogador.gamesPlayed}</strong><span>PARTIDAS</span></div><div><strong>${jogador.wins}</strong><span>VITÓRIAS</span></div><div><strong>${jogador.bestWinStreak}</strong><span>MELHOR SEQUÊNCIA</span></div></div><p>Você descobriu ${jogador.lettersFound} letras e acumulou ${jogador.cognitiveScore} pontos de atividade cognitiva.</p>${modoOnline ? '<h4 class="titulo-bloco">Últimas partidas</h4><div id="historico-partidas"></div>' : ''}`;
+      if (modoOnline) preencherHistorico();
     },
     conquistas: () => {
       titulo.textContent = 'Suas conquistas';
@@ -759,19 +1113,21 @@ refs.form.addEventListener('submit', async (evento) => {
   }
 });
 $('botao-continuar').addEventListener('click', mostrarPainel);
-// No modo online, trocar de usuário encerra a sessão anônima: o próximo
-// nome começa uma jornada nova (a anterior continua no ranking).
-async function trocarUsuario() {
-  if (modoOnline) {
-    try { await ServicoOnline.sair(); } catch (erro) { console.warn('Não foi possível encerrar a sessão.', erro); }
-  }
+$('form-login').addEventListener('submit', enviarLogin);
+$('form-cadastro').addEventListener('submit', enviarCadastro);
+$('aba-entrar').addEventListener('click', () => selecionarAba('entrar'));
+$('aba-cadastro').addEventListener('click', () => selecionarAba('cadastro'));
+$('botao-tentar-novamente').addEventListener('click', verificarSessao);
+$('botao-sair-carregando').addEventListener('click', sairDaConta);
+// Modo local: apaga o perfil deste navegador. No modo online, o botão do
+// cabeçalho encerra a sessão (os dados continuam salvos na conta).
+function trocarUsuario() {
   jogador = null;
-  dadosOnline = { estatisticas: null, ranking: null };
   try { localStorage.removeItem(CHAVE_PERFIL); } catch (erro) { console.warn('Não foi possível limpar o perfil salvo.', erro); }
   mostrarIdentificacao();
 }
 $('botao-trocar-usuario').addEventListener('click', trocarUsuario);
-$('trocar-usuario-cabecalho').addEventListener('click', trocarUsuario);
+$('trocar-usuario-cabecalho').addEventListener('click', () => (modoOnline ? sairDaConta() : trocarUsuario()));
 refs.opcoesDificuldade.addEventListener('click', (evento) => {
   const botao = evento.target.closest('[data-dificuldade]');
   if (botao) selecionarDificuldade(botao.dataset.dificuldade);
@@ -794,21 +1150,32 @@ refs.modal.addEventListener('click', (evento) => { if (evento.target === refs.mo
 document.querySelectorAll('[data-abrir]').forEach((botao) => botao.addEventListener('click', () => abrirModal(botao.dataset.abrir)));
 document.querySelectorAll('[data-modal]').forEach((botao) => botao.addEventListener('click', () => abrirModal(botao.dataset.modal)));
 
-// Tenta o Supabase; sem conexão (ou sem a biblioteca), segue no modo local.
+// Decide o modo de operação. Sem a biblioteca, ou com o servidor fora do ar e
+// nenhuma sessão salva, o jogo segue no modo local. Com sessão salva e servidor
+// inacessível, NÃO trocamos para o modo local: mostramos "Tentar novamente", para
+// o jogador não criar um progresso paralelo por engano.
+// A tela de carregamento fica visível até sabermos se há sessão válida, para que
+// quem já está logado nunca veja o formulário de login "piscar".
 async function inicializar() {
-  modoOnline = typeof ServicoOnline !== 'undefined' && await ServicoOnline.conectar();
-  if (!modoOnline) {
-    jogador = carregarPerfil();
-  } else if (await ServicoOnline.temSessao()) {
-    try {
-      const perfil = await ServicoOnline.obterPerfil();
-      jogador = perfil ? perfilDoServidor(perfil) : null;
-    } catch (erro) {
-      console.warn('Não foi possível carregar o perfil online.', erro);
+  mostrarCarregando('Conectando…');
+  modoOnline = typeof ServicoOnline !== 'undefined' && ServicoOnline.iniciar();
+  if (modoOnline) {
+    ServicoOnline.aoMudarSessao(tratarMudancaDeSessao);
+    if (!await ServicoOnline.testarConexao()) {
+      let sessaoSalva = null;
+      try { sessaoSalva = await ServicoOnline.obterSessao(); } catch (erro) { registrarErro('ler sessão salva', erro); }
+      modoOnline = Boolean(sessaoSalva);
     }
   }
   aplicarRotulosDoModo();
-  mostrarIdentificacao();
+  if (!modoOnline) {
+    jogador = carregarPerfil();
+    $('texto-identificacao').textContent = 'Sem conexão com o servidor: você está no modo offline e seu progresso fica só neste navegador.';
+    inicializando = false;
+    return mostrarIdentificacao();
+  }
+  await verificarSessao();
+  inicializando = false;
 }
 
 const inicializacao = inicializar();
@@ -816,5 +1183,6 @@ const inicializacao = inicializar();
 // Mantém o jogador contado como "online" enquanto a aba estiver visível.
 const INTERVALO_PRESENCA_MS = 120000;
 window.setInterval(() => {
-  if (modoOnline && jogador && !document.hidden) ServicoOnline.obterPerfil().catch(() => {});
+  if (!modoOnline || !jogador || document.hidden) return;
+  ServicoOnline.obterPerfil().catch((erro) => registrarErro('atualizar presença', erro));
 }, INTERVALO_PRESENCA_MS);
