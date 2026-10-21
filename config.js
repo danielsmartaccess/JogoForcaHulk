@@ -1,4 +1,4 @@
-/* Configuração pública do Supabase (projeto "Jogo da Forca Broce B").
+/* Configuração pública do Supabase (projeto "Jogo da Forca Bruce B").
    A chave publishable é feita para ficar no navegador: o acesso real é
    controlado pelas políticas RLS e pelas funções do banco. NUNCA coloque aqui
    a chave secret/service_role nem a senha do banco. */
