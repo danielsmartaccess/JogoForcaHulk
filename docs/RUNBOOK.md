@@ -6,7 +6,7 @@ Tarefas recorrentes de quem opera o Forca Gama. Projeto Supabase: `dmcxzxkmxdhmu
 
 ## Quem está cadastrado
 
-Rode `supabase/consultas/jogadores_cadastrados.sql` (resumo, lista de jogadores, ranking, contas sem perfil e atividade por categoria). Atenção: os comentários do cabeçalho desse arquivo ainda descrevem o modelo anônimo anterior e estão desatualizados; os dados retornados são os atuais.
+Rode `supabase/consultas/jogadores_cadastrados.sql` (resumo, lista de jogadores, ranking, contas sem perfil e atividade por categoria). As consultas não listam e-mails.
 
 ## Adicionar palavras (sem deploy do site)
 

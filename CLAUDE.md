@@ -13,8 +13,10 @@ Jogo da forca temático (Bruce Banner → Hulk), HTML/CSS/JS puro **sem build e 
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | CI/CD, secrets, configuração do Dashboard, rollback |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) | Tarefas de operação, backup, diagnóstico |
 | [docs/SECURITY.md](docs/SECURITY.md) | Modelo de acesso e regras de segurança |
-
-Planejados (ainda não existem): `docs/ARCHITECTURE.md`, `docs/DATA_PRIVACY.md`, `docs/TECH_DEBT.md`, `docs/adr/`.
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Componentes, fluxos, modelo de dados, contrato das RPCs e dos erros |
+| [docs/DATA_PRIVACY.md](docs/DATA_PRIVACY.md) | Dados pessoais tratados e pendências de LGPD |
+| [docs/TECH_DEBT.md](docs/TECH_DEBT.md) | Dívida técnica priorizada |
+| [docs/adr/](docs/adr/README.md) | Decisões de arquitetura |
 
 ## Comandos
 
@@ -55,14 +57,17 @@ Cada informação tem **uma fonte principal**; os outros documentos apontam para
 | Deploy, secrets, configuração do Dashboard | `docs/DEPLOYMENT.md` |
 | Procedimentos de operação | `docs/RUNBOOK.md` |
 | Acesso a dados e segurança | `docs/SECURITY.md` |
+| Contrato das RPCs e dos erros, modelo de dados | `docs/ARCHITECTURE.md` (conferido contra as migrations) |
+| Dados pessoais tratados | `docs/DATA_PRIVACY.md` |
+| Pendências técnicas | `docs/TECH_DEBT.md` |
 
 Regras ao mudar o código:
 
 1. Mudou o comportamento do jogo, da conta ou do ranking: atualize o requisito e a regra em `docs/REQUIREMENTS.md` (e o teste que o cobre) na mesma mudança.
-2. Mudou o schema ou uma permissão: nova migration + atualizar `docs/SECURITY.md` se mudar o acesso.
+2. Mudou o schema, uma RPC ou uma permissão: nova migration + atualizar `docs/ARCHITECTURE.md` (modelo de dados e contrato) e `docs/SECURITY.md` se mudar o acesso. Se passar a tratar um dado pessoal novo, atualizar `docs/DATA_PRIVACY.md`.
 3. Mudou um comando, uma porta ou um pré-requisito: atualizar `docs/TESTING.md` ou o README.
 4. Mudou algo no Dashboard do Supabase ou no CI: atualizar `docs/DEPLOYMENT.md` com a data.
-5. Decisão arquitetural relevante: registrar em `docs/adr/` (quando existir).
+5. Decisão arquitetural relevante: novo ADR em `docs/adr/` (nunca edite um ADR aceito; substitua-o). Dívida técnica nova ou resolvida: atualizar `docs/TECH_DEBT.md`.
 6. Informação não confirmada vira "requer validação"; **nunca invente** requisitos, regras ou decisões.
 7. Confira links e caminhos dos documentos que você tocou.
 8. Não declare que testes passaram sem tê-los executado; diga o que foi executado e o que não foi.
@@ -75,6 +80,7 @@ Sintaxe dos `.js` verificada · testes relevantes executados (ou a lacuna declar
 
 - **Sem CAPTCHA** (não implementar nem recomendar).
 - Arquivos de documentação em `docs/` com **nomes em inglês**, conteúdo em português. Sem `CONTRIBUTING.md` (não há colaboradores previstos). Dívida técnica em arquivo (`docs/TECH_DEBT.md`), não em issues.
+- **Sem CAPTCHA** ([ADR 0005](docs/adr/0005-sem-captcha-no-cadastro.md)); a pontuação é multiplicada pela dificuldade ([ADR 0006](docs/adr/0006-pontuacao-multiplicada-pela-dificuldade.md)).
 - O repositório é **público**: não registre nele estado de credenciais, vulnerabilidades abertas nem dados pessoais.
 - O jogo será aberto ao público em breve; o controlador dos dados (LGPD) é a Just Go.
 - Ações destrutivas ou que afetem produção (Supabase remoto, GitHub) só com autorização explícita do responsável.

@@ -13,6 +13,10 @@ ranking global real e regras de pontuação à prova de trapaça.
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Deploy do site e do banco, secrets, configuração do Dashboard, rollback |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) | Operação: palavras, categorias, contas, backup, diagnóstico |
 | [docs/SECURITY.md](docs/SECURITY.md) | Controle de acesso, segredos e regras de segurança |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Componentes, fluxos, modelo de dados e contrato das RPCs |
+| [docs/DATA_PRIVACY.md](docs/DATA_PRIVACY.md) | Dados pessoais tratados e pendências de LGPD |
+| [docs/TECH_DEBT.md](docs/TECH_DEBT.md) | Dívida técnica priorizada |
+| [docs/adr/](docs/adr/README.md) | Decisões de arquitetura |
 | [CLAUDE.md](CLAUDE.md) | Instruções para agentes de IA que trabalham no repositório |
 
 ## Arquitetura

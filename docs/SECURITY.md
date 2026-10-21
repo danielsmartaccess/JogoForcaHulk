@@ -54,6 +54,8 @@ No frontend, nome, e-mail e dados vindos do servidor entram na página por `text
 
 ## Endurecimentos planejados
 
+Lista priorizada em [TECH_DEBT.md](TECH_DEBT.md). Em resumo:
+
 - Sem **SRI** (`integrity`) no script do `supabase-js` carregado do jsDelivr (a versão está fixada em `2.117.2`) e sem **CSP**.
 - Moderação ou filtro de nomes de exibição no ranking.
 - Recuperação de senha.
