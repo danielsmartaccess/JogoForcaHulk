@@ -2,7 +2,8 @@
 -- Quem está cadastrado no Forca Gama (somente leitura).
 -- Rodar no Dashboard → SQL Editor (precisa do papel postgres, que lê auth.users),
 -- ou: psql "$DB_URL" -f supabase/consultas/jogadores_cadastrados.sql
--- Os jogadores são anônimos (só apelido): não há e-mail para listar.
+-- Cada jogador é uma conta do Supabase Auth (e-mail e senha). Estas consultas não listam e-mails,
+-- por privacidade. Contas anônimas da versão anterior, se ainda existirem, aparecem com conta_anonima = true.
 -- ============================================================================
 
 -- 1) Resumo geral
@@ -42,7 +43,8 @@ where partidas_jogadas > 0
 order by pontuacao desc, nome
 limit 20;
 
--- 4) Contas de login sem jogador (abriram o site mas não informaram o nome)
+-- 4) Contas de login sem perfil (o trigger de cadastro falhou, ou é uma conta anônima legada;
+--    garantir_perfil() cria o perfil no primeiro login de contas com e-mail)
 select
   u.id as user_id,
   u.is_anonymous                               as anonima,

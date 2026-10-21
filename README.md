@@ -1,8 +1,23 @@
-# Forca Gama — Jogo da Forca Broce B
+# Forca Gama — Jogo da Forca Bruce B
 
 Jogo da forca temático (Bruce Banner → Hulk) em HTML/CSS/JS puro, com backend no
 **Supabase** (projeto `dmcxzxkmxdhmufltlkel`): contas com e-mail e senha, progresso na nuvem,
 ranking global real e regras de pontuação à prova de trapaça.
+
+## Documentação
+
+| Documento | Conteúdo |
+|---|---|
+| [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) | Objetivo, requisitos, regras de negócio e discrepâncias conhecidas |
+| [docs/TESTING.md](docs/TESTING.md) | Como rodar os testes e o que eles cobrem |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Deploy do site e do banco, secrets, configuração do Dashboard, rollback |
+| [docs/RUNBOOK.md](docs/RUNBOOK.md) | Operação: palavras, categorias, contas, backup, diagnóstico |
+| [docs/SECURITY.md](docs/SECURITY.md) | Controle de acesso, segredos e regras de segurança |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Componentes, fluxos, modelo de dados e contrato das RPCs |
+| [docs/DATA_PRIVACY.md](docs/DATA_PRIVACY.md) | Dados pessoais tratados e pendências de LGPD |
+| [docs/TECH_DEBT.md](docs/TECH_DEBT.md) | Dívida técnica priorizada |
+| [docs/adr/](docs/adr/README.md) | Decisões de arquitetura |
+| [CLAUDE.md](CLAUDE.md) | Instruções para agentes de IA que trabalham no repositório |
 
 ## Arquitetura
 
@@ -45,6 +60,7 @@ não houver sessão salva, o jogo continua com o motor local original (progresso
 | `supabase/migrations/*` | Esquema, RLS, grants, trigger de perfil e RPCs |
 | `supabase/consultas/jogadores_cadastrados.sql` | Consultas de leitura para o SQL Editor |
 | `supabase/tests/*` | Testes SQL, ponta a ponta e de interface |
+| `.github/workflows/*` | Publicação do site e aplicação das migrations |
 
 ### Modelo de dados
 
@@ -60,44 +76,7 @@ não houver sessão salva, o jogo continua com o motor local original (progresso
 sequências, conquistas). `partidas.modalidade` (padrão `forca`) prepara o histórico para novos
 jogos; quando um segundo jogo existir, o passo natural é separar a progressão por modalidade.
 
-## Deploy do banco
-
-O workflow `.github/workflows/migrations-supabase.yml` aplica as migrations novas ao mesclar na
-`main`. Manualmente:
-
-```powershell
-npx supabase login
-npx supabase link --project-ref dmcxzxkmxdhmufltlkel   # pede a senha do banco
-npx supabase db push
-```
-
-### Configuração manual no Supabase (Dashboard)
-
-1. **Authentication → URL Configuration:**
-   *Site URL* = `https://danielsmartaccess.github.io/JogoForcaHulk/` e adicione a mesma URL em
-   *Redirect URLs*. Sem isso o link do e-mail de confirmação aponta para `localhost`.
-2. **Authentication → Sign In / Providers:** mantenha **Email** ligado com *Confirm email*;
-   **desligue** *Allow anonymous sign-ins* (o jogo não usa mais e as RPCs já recusam anônimos).
-3. **Authentication → Attack Protection:** ative o CAPTCHA e revise o tamanho mínimo da senha
-   (a interface exige 8 caracteres).
-4. **E-mail em produção:** o servidor de e-mail padrão do Supabase tem limite baixo (poucos
-   e-mails por hora) e é só para testes. Configure um SMTP próprio em
-   *Authentication → Emails → SMTP Settings* antes de abrir o jogo ao público.
-5. Opcional: personalize o modelo do e-mail *Confirm signup* em português.
-
-## Deploy do site
-
-O site é estático (sem build) e é publicado no **GitHub Pages** pelo workflow
-`.github/workflows/publicar-site.yml` a cada push na `main`. Só `index.html`, `style.css`,
-`script.js`, `config.js` e `servico-supabase.js` vão para o ar.
-
-Configuração única: **Settings → Pages → Source: GitHub Actions**.
-
-Secrets do workflow de migrations (**Settings → Secrets and variables → Actions**):
-`SUPABASE_ACCESS_TOKEN` (https://supabase.com/dashboard/account/tokens) e
-`SUPABASE_DB_PASSWORD` (Project Settings → Database). Nunca vão para o frontend.
-
-## Desenvolvimento local e testes
+## Desenvolvimento local
 
 ```powershell
 npx supabase start     # Postgres + Auth + API + caixa de e-mail de teste (Docker)
@@ -105,40 +84,22 @@ npx supabase db reset  # recria o banco local aplicando as migrations
 npx supabase stop
 ```
 
-O `supabase/config.toml` liga a confirmação de e-mail, desliga login anônimo e exige senha de 8+
-caracteres, espelhando o projeto remoto. Para apontar o site ao ambiente local, troque
-temporariamente `config.js` pela URL `http://127.0.0.1:54321` e a chave de `npx supabase status`
-(e sirva a pasta em `http://127.0.0.1:3000`, que está na lista de redirecionamentos).
+O `supabase/config.toml` liga a confirmação de e-mail e desliga login anônimo (como no projeto
+remoto) e exige senha de 8+ caracteres (como a interface). As opções do remoto, como Site URL e
+SMTP, são manuais: ver [DEPLOYMENT.md](docs/DEPLOYMENT.md). Para apontar o site ao ambiente local, troque
+temporariamente `config.js` pela URL `http://127.0.0.1:54321` e a chave de `npx supabase status`,
+e sirva a pasta na **porta 3000** (`http://127.0.0.1:3000`, a única na lista de redirecionamentos;
+o Live Server do VS Code está configurado na 5501 e **não** serve para o fluxo de e-mail).
 
-Três camadas de teste (copie `.env.example` para `.env` ou exporte as variáveis):
+Testes (SQL, ponta a ponta e de interface): [docs/TESTING.md](docs/TESTING.md).
 
-```powershell
-# 1) Regras do jogo + RLS/grants (SQL; desfaz tudo no final)
-docker exec -i supabase_db_jogo-da-forca-broce-b psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/regras_do_jogo.sql
+## Deploy e operação
 
-# 2) Ponta a ponta com o supabase-js real: cadastro, e-mail de confirmação, login, sessão,
-#    logout, progressão, isolamento entre usuários, falha de rede
-npm i @supabase/supabase-js@2.117.2 jsdom      # em uma pasta de trabalho
-node supabase/tests/e2e.mjs
-
-# 3) Interface: executa index.html + script.js em jsdom contra o backend local
-node supabase/tests/ui.mjs .
-```
-
-> Os testes de interface usam jsdom: validam fluxo e estados, mas **não** layout, CSS nem foco
-> real. Faça também uma checagem manual no navegador.
-
-## Operação
-
-- **Quem está cadastrado:** rode `supabase/consultas/jogadores_cadastrados.sql` no SQL Editor.
-- **Novas palavras** (sem deploy do site):
-  `insert into public.palavras (dificuldade, categoria, palavra) values ('medio', 'geral', 'EXEMPLO');`
-  Use só letras A–Z maiúsculas, sem acento. Desativar: `update public.palavras set ativa = false where palavra = 'X';`
-- **Nova categoria:** insira em `public.categorias` **e** adicione a entrada em `CATEGORIAS` no `script.js`.
-- **Regra de pontuação:** altere em nova migration (`public.tentar_letra`) **e** em
-  `aplicarFimDePartidaLocal` no `script.js`, para os dois modos ficarem iguais.
-- **Apagar uma conta (LGPD):** exclua o usuário em *Authentication → Users*; o perfil, as partidas
-  e a progressão são removidos em cascata.
+- O **site** é estático (sem build) e vai para o GitHub Pages a cada push na `main` que altere os
+  arquivos do jogo. As **migrations** novas são aplicadas ao mesclar na `main`. Detalhes,
+  secrets e configuração manual do Dashboard: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+- Tarefas de operação (quem está cadastrado, novas palavras e categorias, mudar regra de
+  pontuação, apagar conta por LGPD, backup): [docs/RUNBOOK.md](docs/RUNBOOK.md).
 
 ## Limitações conhecidas
 
@@ -151,3 +112,4 @@ node supabase/tests/ui.mjs .
 - O progresso do `localStorage` do modo local não é enviado à nuvem (aceitar pontuação do
   cliente abriria brecha para trapaça).
 - O banco de palavras local (fallback) fica no `script.js`; o servidor pode ter palavras extras.
+- Outras discrepâncias de comportamento: [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md), seção 8.
