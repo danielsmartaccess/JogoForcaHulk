@@ -44,7 +44,12 @@ function abrirPagina(armazenado = new Map(), { semServidor = false } = {}) {
   w.scrollTo = () => {};
   w.AbortSignal = AbortSignal; w.Headers = Headers; w.Request = Request; w.Response = Response;
   w.__offline = false;
-  w.fetch = (...a) => (w.__offline ? Promise.reject(new TypeError('Failed to fetch')) : fetch(...a));
+  w.__atrasoRanking = 0; // ms de atraso artificial no ranking, para observar o estado "carregando"
+  w.fetch = async (...a) => {
+    if (w.__offline) throw new TypeError('Failed to fetch');
+    if (w.__atrasoRanking && String(a[0]).includes('/rpc/obter_ranking')) await dormir(w.__atrasoRanking);
+    return fetch(...a);
+  };
   const aparicoes = { autenticacao: false };
   new w.MutationObserver(() => { if (!w.document.getElementById('tela-autenticacao').hidden) aparicoes.autenticacao = true; })
     .observe(w.document.getElementById('tela-autenticacao'), { attributes: true, attributeFilter: ['hidden'] });
@@ -156,10 +161,16 @@ enviar(p, 'form-login');
 await ate(() => /incorretos/.test(p.$('erro-login').textContent), 'erro de credenciais');
 checar(p.$('erro-login').textContent === 'E-mail ou senha incorretos.' && !p.visivel('tela-painel'), 'login inválido: mensagem genérica');
 preencher(p, { 'login-email': email, 'login-senha': senha });
+p.w.__atrasoRanking = 800; // segura o ranking para observar o painel enquanto os dados reais não chegam
 enviar(p, 'form-login');
 await ate(() => p.visivel('tela-painel'), 'painel');
 checar(p.visivel('tela-painel'), 'login válido abre o painel');
-await ate(() => p.$('online-geral').textContent !== '1.284', 'dados reais do painel');
+checar(p.$('online-geral').textContent === '—' && p.$('lista-ranking').textContent.includes('Carregando') && !/CARLOS|MARIA|LUCAS/.test(p.$('lista-ranking').textContent),
+  'modo online: enquanto os dados reais carregam, nada simulado aparece');
+checar(p.$('rotulo-dados-online').textContent !== 'Dados em tempo real', 'modo online: o rótulo não afirma "tempo real" antes de os dados chegarem');
+await ate(() => /^\d/.test(p.$('online-geral').textContent) && !p.$('lista-ranking').textContent.includes('Carregando'), 'dados reais do painel');
+p.w.__atrasoRanking = 0;
+checar(p.$('rotulo-dados-online').textContent === 'Dados em tempo real' && p.$('selo-ranking').textContent === 'AO VIVO', 'modo online: com os dados reais, os rótulos de tempo real aparecem');
 checar(p.$('nome-painel').textContent === 'Ana Banner' && p.$('nome-cabecalho').textContent === 'Ana Banner', 'saudação com o nome de exibição normalizado');
 checar(p.$('trocar-usuario-cabecalho').textContent === 'Sair' && p.$('sinal-modo').textContent.includes('ONLINE'), 'interface em modo online (botão "Sair")');
 checar(p.$('subtitulo-painel').textContent.startsWith('Escolha um desafio'), 'primeiro acesso: sem mensagem de retorno');
@@ -170,6 +181,9 @@ await ate(() => p.w.document.querySelector('[data-categoria="herois"]'), 'catego
 p.w.document.querySelector('[data-categoria="herois"]').click();
 await ate(() => p.visivel('tela-partida'), 'partida');
 checar(p.visivel('tela-partida') && [...p.w.document.querySelectorAll('.celula-letra')].every((c) => !c.textContent), 'partida inicia com a palavra oculta');
+const atalho = new p.w.KeyboardEvent('keydown', { key: 'r', ctrlKey: true, cancelable: true });
+p.w.document.dispatchEvent(atalho);
+checar(!atalho.defaultPrevented && p.w.document.querySelectorAll('.chip-letra').length === 0, 'atalho Ctrl+letra não vira jogada nem é bloqueado');
 await jogarPelaTela(p, 'facil', 'herois');
 checar(p.visivel('tela-resultado'), 'partida termina e mostra o resultado');
 checar(/^A palavra era: [A-Z]+$/.test(p.$('palavra-revelada-resultado').textContent), 'resultado revela a palavra só no fim');

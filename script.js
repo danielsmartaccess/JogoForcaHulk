@@ -55,10 +55,12 @@ const BANCO_DE_PALAVRAS = {
   },
 };
 
+// "pontos" é a base de uma vitória; o multiplicador da dificuldade escala o total da partida
+// (ver aplicarFimDePartidaLocal e public.tentar_letra, que precisam ficar iguais).
 const DIFICULDADES = {
   facil: { nome: 'Fácil', multiplicador: 1, pontos: 40, cognitivo: 5 },
-  medio: { nome: 'Médio', multiplicador: 2, pontos: 90, cognitivo: 9 },
-  dificil: { nome: 'Difícil', multiplicador: 3, pontos: 150, cognitivo: 14 },
+  medio: { nome: 'Médio', multiplicador: 2, pontos: 40, cognitivo: 9 },
+  dificil: { nome: 'Difícil', multiplicador: 3, pontos: 40, cognitivo: 14 },
 };
 const CATEGORIAS = {
   geral: { nome: 'Geral', icone: '✦', descricao: 'Um pouco de tudo' },
@@ -142,7 +144,8 @@ function perfilDoServidor(p) {
 
 let jogador = null;
 let modoOnline = false;
-let dadosOnline = { estatisticas: null, ranking: null };
+// "falhou" distingue "ainda carregando" de "não foi possível carregar": no modo online nunca se mostram dados simulados.
+let dadosOnline = { estatisticas: null, ranking: null, falhou: false };
 // "rodada" identifica a partida atual e descarta respostas de partidas já abandonadas.
 const estadoDaPartida = { difficulty: null, category: null, partidaId: null, rodada: 0, revelada: [], tried: new Set(), correct: new Set(), errors: 0, active: false, aguardando: false };
 let iniciandoPartida = false;
@@ -361,7 +364,7 @@ function mostrarEntrada() {
 function limparEstadoPrivado() {
   geracaoSessao += 1;
   jogador = null;
-  dadosOnline = { estatisticas: null, ranking: null };
+  dadosOnline = { estatisticas: null, ranking: null, falhou: false };
   ultimaPartida = null;
   Object.assign(estadoDaPartida, { active: false, aguardando: false, partidaId: null, revelada: [], rodada: estadoDaPartida.rodada + 1 });
   ['form-login', 'form-cadastro'].forEach((id) => $(id).reset());
@@ -585,14 +588,20 @@ async function carregarDadosOnline() {
   try {
     const [estatisticas, ranking] = await Promise.all([ServicoOnline.obterEstatisticas(), ServicoOnline.obterRanking(10)]);
     if (geracao !== geracaoSessao) return; // houve saída/troca de conta no meio da busca
-    dadosOnline = { estatisticas, ranking };
+    dadosOnline = { estatisticas, ranking, falhou: false };
     if (jogador && !telas.painel.hidden) {
       gerarOpcoesDeCategoria(jogador.difficulty);
       atualizarPainel();
     }
   } catch (erro) {
     registrarErro('carregar ranking e atividade', erro);
-    if (erroDeSessao(erro) && geracao === geracaoSessao) encerrarSessaoLocal('Sua sessão expirou. Entre novamente.');
+    if (geracao !== geracaoSessao) return;
+    if (erroDeSessao(erro)) return encerrarSessaoLocal('Sua sessão expirou. Entre novamente.');
+    dadosOnline.falhou = true;
+    if (jogador && !telas.painel.hidden) {
+      gerarOpcoesDeCategoria(jogador.difficulty);
+      atualizarPainel();
+    }
   }
 }
 
@@ -612,6 +621,9 @@ function resumoDaCategoria(dificuldade, chave) {
       texto: `${palavras} palavras · ${jogando} jogando agora${media !== undefined ? ` · média ${media} pts` : ''}`,
       acessivel: `${palavras} palavras. ${jogando} jogando agora.`,
     };
+  }
+  if (modoOnline) {
+    return { texto: dadosOnline.falhou ? 'Dados de atividade indisponíveis no momento' : 'Carregando dados…', acessivel: '' };
   }
   const palavras = BANCO_DE_PALAVRAS[dificuldade][chave]?.length || 0;
   const online = DADOS_MOCK.categorias[chave] || 48 + chave.length * 7;
@@ -672,17 +684,29 @@ function atualizarPainel() {
   $('avatar-jornada').textContent = jornada[0];
   $('rotulo-jornada').textContent = jornada[1];
   const jogandoAgora = atividadeAtual();
-  $('online-geral').textContent = jogandoAgora.geral.toLocaleString('pt-BR');
-  $('online-categoria').textContent = jogandoAgora.categoria.toLocaleString('pt-BR');
+  $('online-geral').textContent = jogandoAgora ? jogandoAgora.geral.toLocaleString('pt-BR') : '—';
+  $('online-categoria').textContent = jogandoAgora ? jogandoAgora.categoria.toLocaleString('pt-BR') : '—';
   const voce = listaDoRanking().find((pessoa) => pessoa.atual);
   $('posicao-ranking').textContent = voce ? `#${voce.posicao}` : '—';
+  rotularDadosOnline();
   renderizarRanking();
   renderizarConquistas();
+}
+
+// No modo online, enquanto os dados reais não chegam (ou se falharem), nada simulado é exibido:
+// os rótulos dizem o estado real. Os rótulos "demonstrativos" valem só para o modo local.
+function rotularDadosOnline() {
+  if (!modoOnline) return;
+  const pronto = Boolean(dadosOnline.estatisticas && dadosOnline.ranking);
+  const estado = pronto ? 'pronto' : dadosOnline.falhou ? 'falhou' : 'carregando';
+  $('rotulo-dados-online').textContent = { pronto: 'Dados em tempo real', falhou: 'Dados indisponíveis no momento', carregando: 'Carregando dados…' }[estado];
+  $('selo-ranking').textContent = { pronto: 'AO VIVO', falhou: 'INDISPONÍVEL', carregando: 'CARREGANDO' }[estado];
 }
 
 function atividadeAtual() {
   const estat = dadosOnline.estatisticas;
   if (modoOnline && estat) return { geral: estat.online, categoria: estat.online_por_categoria?.[jogador.category] || 0 };
+  if (modoOnline) return null;
   return { geral: DADOS_MOCK.online, categoria: DADOS_MOCK.categorias[jogador.category] || 48 + jogador.category.length * 7 };
 }
 
@@ -691,6 +715,7 @@ function listaDoRanking() {
   if (modoOnline && dadosOnline.ranking) {
     return dadosOnline.ranking.map((linha) => ({ posicao: linha.posicao, nome: linha.nome.toLocaleUpperCase('pt-BR'), score: linha.pontuacao, atual: linha.eh_voce }));
   }
+  if (modoOnline) return [];
   return [...DADOS_MOCK.ranking, { nome: jogador.name.toLocaleUpperCase('pt-BR'), score: jogador.score, atual: true }]
     .sort((a, b) => b.score - a.score)
     .map((pessoa, indice) => ({ ...pessoa, posicao: indice + 1 }));
@@ -704,6 +729,12 @@ function renderizarRanking() {
   if (voce && !ranking.includes(voce)) ranking[ranking.length - 1] = voce;
   const lista = $('lista-ranking');
   lista.replaceChildren();
+  if (modoOnline && !completo.length) {
+    const aviso = document.createElement('li');
+    aviso.textContent = dadosOnline.falhou ? 'Ranking indisponível no momento.' : 'Carregando ranking…';
+    lista.appendChild(aviso);
+    return;
+  }
   ranking.forEach((pessoa) => {
     const item = document.createElement('li');
     if (pessoa.atual) item.className = 'jogador-atual';
@@ -875,7 +906,9 @@ async function processarTentativaDeLetra(entrada) {
 // public.tentar_letra (supabase/migrations) — mantenha as duas alinhadas.
 function aplicarFimDePartidaLocal(venceu, acertos, slugDificuldade) {
   const dificuldade = DIFICULDADES[slugDificuldade];
-  const pontos = venceu ? (dificuldade.pontos + acertos * 5) : Math.round(dificuldade.pontos * 0.2);
+  const pontos = venceu
+    ? (dificuldade.pontos + acertos * 5) * dificuldade.multiplicador
+    : Math.round(dificuldade.pontos * dificuldade.multiplicador * 0.2);
   const pontosCognitivos = dificuldade.cognitivo + acertos + (venceu ? 5 : 0);
   jogador.gamesPlayed += 1;
   jogador.score += pontos;
@@ -1076,7 +1109,9 @@ function abrirModal(tipo) {
       titulo.textContent = modoOnline ? 'Ranking global' : 'Ranking local';
       conteudo.innerHTML = estat
         ? `<p class="texto-secundario">Top 10 entre ${estat.total_jogadores.toLocaleString('pt-BR')} jogadores.</p><ol class="lista-ranking ranking-modal"></ol><p class="nota-demo">${estat.online.toLocaleString('pt-BR')} jogando nos últimos 5 minutos.</p>`
-        : `<p class="texto-secundario">Placares de demonstração, sem conexão ou competição online.</p><ol class="lista-ranking ranking-modal"></ol><p class="nota-demo">${DADOS_MOCK.online.toLocaleString('pt-BR')} jogadores estimados (mock).</p>`;
+        : modoOnline
+          ? `<p class="texto-secundario">${dadosOnline.falhou ? 'Ranking indisponível no momento. Tente de novo em instantes.' : 'Carregando ranking… Feche e abra de novo em instantes.'}</p><ol class="lista-ranking ranking-modal"></ol>`
+          : `<p class="texto-secundario">Placares de demonstração, sem conexão ou competição online.</p><ol class="lista-ranking ranking-modal"></ol><p class="nota-demo">${DADOS_MOCK.online.toLocaleString('pt-BR')} jogadores estimados (mock).</p>`;
       const lista = conteudo.querySelector('ol');
       listaDoRanking().forEach((pessoa) => {
         const linha = document.createElement('li');
@@ -1134,7 +1169,8 @@ refs.opcoesDificuldade.addEventListener('click', (evento) => {
 });
 document.addEventListener('keydown', (evento) => {
   if (evento.key === 'Escape' && !refs.modal.hidden) refs.modal.hidden = true;
-  if (estadoDaPartida.active && evento.key.length === 1 && /[a-z]/i.test(evento.key)) {
+  // Atalhos do navegador (Ctrl/Cmd/Alt + letra, como Ctrl+R) não são jogadas e não podem ser bloqueados.
+  if (estadoDaPartida.active && !evento.ctrlKey && !evento.metaKey && !evento.altKey && evento.key.length === 1 && /[a-z]/i.test(evento.key)) {
     evento.preventDefault();
     processarTentativaDeLetra(evento.key);
   }

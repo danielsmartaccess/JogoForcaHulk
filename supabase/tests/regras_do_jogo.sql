@@ -30,8 +30,8 @@ select pg_temp.checar(not exists (select 1 from public.jogadores where id = '000
 select pg_temp.checar((select count(*) from public.jogadores where id in ('00000000-0000-0000-0000-00000000000a','00000000-0000-0000-0000-00000000000b')) = 2, 'cada cadastro gera exatamente um perfil');
 
 -- Palavra controlada para tornar o teste determinístico.
-insert into public.palavras (dificuldade, categoria, palavra) values ('dificil', 'geral', 'ZZTESTE');
-update public.palavras set ativa = false where dificuldade = 'dificil' and categoria = 'geral' and palavra <> 'ZZTESTE';
+insert into public.palavras (dificuldade, categoria, palavra) values ('dificil', 'geral', 'ZZTESTE'), ('medio', 'geral', 'ZZTESTE');
+update public.palavras set ativa = false where dificuldade in ('dificil', 'medio') and categoria = 'geral' and palavra <> 'ZZTESTE';
 
 -- ----------------------------------------------------- perfil: recuperação
 -- Conta antiga sem perfil (ou trigger que falhou): garantir_perfil recria, sem sobrescrever.
@@ -89,16 +89,16 @@ select pg_temp.checar((public.tentar_letra((select (r ->> 'partida_id')::uuid fr
 select public.tentar_letra((select (r ->> 'partida_id')::uuid from t_partida), l) from unnest(array['T', 'E']) l;
 create temp table t_fim as select public.tentar_letra((select (r ->> 'partida_id')::uuid from t_partida), 'S') as r;
 
--- Difícil: 150 + 4 letras distintas × 5 = 170 pontos; cognitivo 14 + 4 + 5 = 23.
+-- Difícil (x3): (40 + 4 letras distintas × 5) × 3 = 180 pontos; cognitivo 14 + 4 + 5 = 23.
 select pg_temp.checar((select r ->> 'status' = 'vitoria' and r ->> 'palavra' = 'ZZTESTE' from t_fim), 'vitória revela a palavra');
-select pg_temp.checar((select (r ->> 'pontos')::int = 170 and (r ->> 'pontos_cognitivos')::int = 23 from t_fim), 'pontuação igual à regra local');
+select pg_temp.checar((select (r ->> 'pontos')::int = 180 and (r ->> 'pontos_cognitivos')::int = 23 from t_fim), 'pontuação igual à regra local');
 select pg_temp.checar((select (r -> 'jogador' ->> 'vitorias_dificil')::int = 1 and (r -> 'jogador' ->> 'melhor_sequencia_letras')::int = 3 from t_fim), 'estatísticas do jogador atualizadas');
 select pg_temp.checar((select r -> 'jogador' -> 'conquistas' @> '["primeiro-acerto","primeira-vitoria","desafio-dificil"]'::jsonb from t_fim), 'conquistas desbloqueadas');
 select pg_temp.checar((select jsonb_array_length(r -> 'jogador' -> 'recompensas') = 0 from t_fim), 'nenhuma recompensa com 1 vitória (meta mínima no Difícil = 2)');
 select pg_temp.checar((select r -> 'jogador' ->> 'ultima_partida_em' is not null from t_fim), 'ultima_partida_em preenchida após concluir');
 
 -- Histórico do dono (colunas permitidas).
-select pg_temp.checar((select count(*) = 1 and bool_and(modalidade = 'forca' and status = 'vitoria' and pontos = 170) from public.partidas), 'histórico do dono: 1 partida concluída, modalidade forca');
+select pg_temp.checar((select count(*) = 1 and bool_and(modalidade = 'forca' and status = 'vitoria' and pontos = 180) from public.partidas), 'histórico do dono: 1 partida concluída, modalidade forca');
 
 -- Sem registro duplicado: repetir a jogada final é recusado e nada muda.
 do $$ begin
@@ -106,7 +106,7 @@ do $$ begin
   raise exception 'FALHOU: partida encerrada aceitou nova jogada';
 exception when invalid_parameter_value then raise notice 'ok - partida concluída não pode ser registrada de novo';
 end $$;
-select pg_temp.checar((select vitorias = 1 and partidas_jogadas = 1 and pontuacao = 170 from public.jogadores), 'repetição não duplica vitória nem pontos');
+select pg_temp.checar((select vitorias = 1 and partidas_jogadas = 1 and pontuacao = 180 from public.jogadores), 'repetição não duplica vitória nem pontos');
 
 -- ------------------------------------------------ segurança (escrita direta)
 do $$ begin
@@ -175,20 +175,26 @@ exception when no_data_found then raise notice 'ok - jogador B não joga na part
 end $$;
 -- (independentes do conteúdo do banco: outros jogadores podem existir)
 select pg_temp.checar((select count(*) from public.obter_ranking(50) where eh_voce) = 1, 'ranking inclui o próprio jogador, mesmo sem partidas');
-select pg_temp.checar((select pontuacao from public.obter_ranking(50) where nome = 'Dani Banner') = 170, 'ranking inclui quem já jogou, com a pontuação correta');
+select pg_temp.checar((select pontuacao from public.obter_ranking(50) where nome = 'Dani Banner') = 180, 'ranking inclui quem já jogou, com a pontuação correta');
 select pg_temp.checar(not exists (select 1 from public.obter_ranking(50) a join public.obter_ranking(50) b on a.posicao < b.posicao where a.pontuacao < b.pontuacao), 'ranking ordenado por pontos');
 select pg_temp.checar((select bool_and(not (to_jsonb(r) ? 'email')) from public.obter_ranking(10) r), 'ranking não expõe e-mail');
 
--- Derrota: 6 erros → 20% dos pontos.
+-- Derrota (Difícil x3): 6 erros → round(20% × 40 × 3) = 24 pontos.
 create temp table t_b as select public.iniciar_partida('dificil', 'geral') as r;
 select public.tentar_letra((select (r ->> 'partida_id')::uuid from t_b), l) from unnest(array['A','B','C','D','F']) l;
 create temp table t_b_fim as select public.tentar_letra((select (r ->> 'partida_id')::uuid from t_b), 'G') as r;
-select pg_temp.checar((select r ->> 'status' = 'derrota' and (r ->> 'pontos')::int = 30 from t_b_fim), 'derrota rende 20% dos pontos');
+select pg_temp.checar((select r ->> 'status' = 'derrota' and (r ->> 'pontos')::int = 24 from t_b_fim), 'derrota rende 20% da base multiplicada pela dificuldade');
 do $$ begin
   perform public.tentar_letra((select (r ->> 'partida_id')::uuid from t_b), 'H');
   raise exception 'FALHOU: jogou em partida encerrada';
 exception when invalid_parameter_value then raise notice 'ok - partida encerrada não aceita letras';
 end $$;
+
+-- Multiplicador: Médio (x2) vence com 4 letras distintas → (40 + 4 × 5) × 2 = 120 pontos.
+create temp table t_m as select public.iniciar_partida('medio', 'geral') as r;
+select public.tentar_letra((select (r ->> 'partida_id')::uuid from t_m), l) from unnest(array['Z', 'T', 'E']) l;
+create temp table t_m_fim as select public.tentar_letra((select (r ->> 'partida_id')::uuid from t_m), 'S') as r;
+select pg_temp.checar((select r ->> 'status' = 'vitoria' and (r ->> 'pontos')::int = 120 from t_m_fim), 'o multiplicador escala os pontos da vitória (Médio x2)');
 
 -- Apenas uma partida aberta por jogador: iniciar outra abandona a anterior.
 create temp table t_c1 as select public.iniciar_partida('facil', 'geral') as r;
